@@ -63,7 +63,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
     : SHOP_CATALOG.filter((i) => i.category === selectedCategory);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/85 backdrop-blur-sm pointer-events-auto animate-fade-in font-sans">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/90 pointer-events-auto animate-fade-in font-sans">
       <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-purple-500 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-[0_0_50px_rgba(168,85,247,0.35)] overflow-hidden">
         
         {/* Cabeçalho */}
@@ -214,7 +214,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 w-screen h-screen bg-slate-950/95 backdrop-blur-md p-2 sm:p-5 flex flex-col justify-between pointer-events-auto animate-fade-in font-sans select-none">
+    <div className="fixed inset-0 z-50 w-screen h-screen bg-slate-950/95 p-2 sm:p-5 flex flex-col justify-between pointer-events-auto animate-fade-in font-sans select-none">
       <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-4 border-[#854d0e] rounded-3xl w-full h-full flex flex-col shadow-[0_0_60px_rgba(245,158,11,0.35)] overflow-hidden">
         
         {/* Cabeçalho Gigante Infantil */}
@@ -395,7 +395,7 @@ export const JobsModal: React.FC<JobsModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/85 backdrop-blur-sm pointer-events-auto animate-fade-in font-sans">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/90 pointer-events-auto animate-fade-in font-sans">
       <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-emerald-500 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-[0_0_50px_rgba(16,185,129,0.35)] overflow-hidden">
         
         {/* Cabeçalho */}

@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { createTheoLuccaModel, TheoLuccaRig } from './TheoLuccaModel';
+import { 
+  createTheoLuccaModel, 
+  TheoLuccaRig, 
+  CharacterCustomization, 
+  DEFAULT_CHARACTER_CUSTOMIZATION 
+} from './TheoLuccaModel';
 import { createCityScene, CitySceneObjects, CityCar, CityMoto, CityNPC } from './CityScene';
 import { soundManager } from './audio';
 import { PhasesManager } from './PhasesManager';
@@ -74,6 +79,9 @@ export interface CityHUDState {
   allCars: { x: number; z: number; colorName: string }[];
   allMotos: { x: number; z: number; colorName: string }[];
   expansionAnnouncement?: { name: string; desc: string } | null;
+  performanceMode: 'light' | 'normal';
+  characterCustomization: CharacterCustomization;
+  characterName: string;
 }
 
 export interface GameEngineCallbacks {
@@ -157,6 +165,12 @@ export class GameEngine {
   private dialogueText: string | null = null;
   private dialogueTimer = 0;
 
+  // Personalização do Personagem (Nome, Roupas, Boné, Sapatos, Mochila, Cabelo, etc.)
+  private characterCustomization: CharacterCustomization = { ...DEFAULT_CHARACTER_CUSTOMIZATION };
+
+  // Modo de Desempenho (Leve / 60 FPS para PCs fracos e Android vs Normal)
+  private performanceMode: 'light' | 'normal' = 'light';
+
   // Loop & software GL guard
   private isSoftwareGl = false;
   private frameId = 0;
@@ -178,6 +192,17 @@ export class GameEngine {
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
 
+    // Carrega personalização salva do personagem (nome, roupas, boné, sapatos, mochila, cabelo)
+    try {
+      const savedCustom = typeof localStorage !== 'undefined' ? localStorage.getItem('theo_lucca_customization') : null;
+      if (savedCustom) {
+        this.characterCustomization = { ...DEFAULT_CHARACTER_CUSTOMIZATION, ...JSON.parse(savedCustom) };
+      }
+    } catch {
+      // ignore
+    }
+
+    // Detecção de GPU de renderização por software
     this.isSoftwareGl = (() => {
       const gl = document.createElement('canvas').getContext('webgl2');
       if (!gl) return true;
@@ -188,21 +213,33 @@ export class GameEngine {
       return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
     })();
 
+    // Preferência de desempenho: padrão 'light' garante 60 FPS sólido em celulares Android e computadores básicos
+    const savedPerf = typeof localStorage !== 'undefined' ? localStorage.getItem('theo_lucca_perf_mode') : null;
+    if (savedPerf === 'light' || savedPerf === 'normal') {
+      this.performanceMode = savedPerf;
+    } else {
+      this.performanceMode = 'light';
+    }
+
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl,
+      antialias: true, // Mantém as bordas perfeitamente lisas e nítidas
       powerPreference: 'high-performance',
     });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
-    this.renderer.shadowMap.enabled = !this.isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.container.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(58, width / height, 0.1, 220);
+    // Camera com alcance otimizado para culling de objetos distantes
+    this.camera = new THREE.PerspectiveCamera(
+      58,
+      width / height,
+      0.1,
+      this.performanceMode === 'light' ? 145 : 195
+    );
 
     this.cityScene = createCityScene();
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -213,9 +250,13 @@ export class GameEngine {
     this.player = createTheoLuccaModel();
     this.player.root.position.copy(this.playerPos);
     this.player.root.rotation.y = this.playerRotationY;
+    this.player.applyCustomization(this.characterCustomization);
     this.cityScene.scene.add(this.player.root);
     // Sinaliza o primeiro objetivo de missão no mundo 3D (Oficina Mecânica)
     this.cityScene.setBeaconPosition(new THREE.Vector3(32, 0, -24));
+
+    // Aplica as diretrizes de desempenho
+    this.applyPerformanceSettings(this.performanceMode);
 
     window.addEventListener('resize', this.onWindowResize);
     window.addEventListener('keydown', this.onKeyDown);
@@ -296,9 +337,10 @@ export class GameEngine {
       // Fala em voz alta em português do Brasil com a voz do personagem (masculina ou feminina)
       cityVoiceManager.speak(targetNPC.name, randomTip, targetNPC.gender || 'male', true);
     } else {
-      // Theo Lucca falando sozinho animado
-      cityVoiceManager.speakTheoLucca();
-      this.dialogueText = 'Theo Lucca: "Oi cidade linda! Vamos cumprir as missões e expandir o mapa!"';
+      // Personagem falando sozinho animado
+      const charName = this.characterCustomization.name || 'Theo Lucca';
+      cityVoiceManager.speak(charName, `Oi cidade linda! Eu sou ${charName}! Vamos cumprir as missões e expandir o mapa!`, 'male', true);
+      this.dialogueText = `${charName}: "Oi cidade linda! Vamos cumprir as missões e expandir o mapa!"`;
     }
     this.dialogueTimer = 6.0;
   }
@@ -1482,6 +1524,9 @@ export class GameEngine {
         colorName: m.colorName,
       })),
       expansionAnnouncement: this.expansionAnnouncement,
+      performanceMode: this.performanceMode,
+      characterCustomization: this.characterCustomization,
+      characterName: this.characterCustomization.name || 'Theo Lucca',
     });
   }
 
@@ -1512,6 +1557,54 @@ export class GameEngine {
     }
   };
 
+  public applyPerformanceSettings(mode: 'light' | 'normal') {
+    this.performanceMode = mode;
+    try {
+      localStorage.setItem('theo_lucca_perf_mode', mode);
+    } catch {
+      // ignora se localStorage não estiver acessível
+    }
+
+    if (!this.renderer || !this.camera) return;
+
+    // Resolução nítida e cristalina para não pixelar em celulares ou computadores
+    const sharpDPR = Math.min(window.devicePixelRatio || 1, 2.0);
+    this.renderer.setPixelRatio(sharpDPR);
+
+    if (mode === 'light') {
+      // Modo Leve 60 FPS: Desativa sombras dinâmicas de 100+ objetos (economiza GPU mantendo a resolução 100% nítida)
+      this.renderer.shadowMap.enabled = false;
+      if (this.cityScene?.sunLight) {
+        this.cityScene.sunLight.castShadow = false;
+      }
+      this.camera.far = 150;
+    } else {
+      // Modo Normal: Sombras suaves PCF
+      this.renderer.shadowMap.enabled = !this.isSoftwareGl;
+      this.renderer.shadowMap.type = THREE.PCFShadowMap;
+      if (this.cityScene?.sunLight) {
+        this.cityScene.sunLight.castShadow = !this.isSoftwareGl;
+      }
+      this.camera.far = 195;
+    }
+    this.camera.updateProjectionMatrix();
+  }
+
+  public togglePerformanceMode(): 'light' | 'normal' {
+    const nextMode = this.performanceMode === 'light' ? 'normal' : 'light';
+    this.applyPerformanceSettings(nextMode);
+    this.dialogueText = nextMode === 'light' 
+      ? '⚡ Modo Leve (60 FPS Nítido) Ativado!' 
+      : '✨ Modo Gráficos Altos Ativado com sombras detalhadas!';
+    this.dialogueTimer = 4.0;
+    this.dispatchHUDData();
+    return nextMode;
+  }
+
+  public getPerformanceMode(): 'light' | 'normal' {
+    return this.performanceMode;
+  }
+
   private onWindowResize = () => {
     if (!this.container || !this.renderer || !this.camera) return;
     const width = this.container.clientWidth || window.innerWidth;
@@ -1519,6 +1612,7 @@ export class GameEngine {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
   };
 
   public pause() {

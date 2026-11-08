@@ -16,6 +16,46 @@ import * as THREE from 'three';
  * - Smooth skeleton hierarchy with realistic walk, run, jump, car-passenger, wave & work animations
  */
 
+export interface CharacterCustomization {
+  name: string;
+  skinColor: string;
+  hairColor: string;
+  eyeColor: string;
+  hasCap: boolean;
+  capColor: string;
+  capStyle: 'forward' | 'backward';
+  shirtColor: string;
+  shirtDecal: 'star' | 'lightning' | 'fire' | 'diamond' | 'heart' | 'skull' | 'none';
+  shortsColor: string;
+  shoeColor: string;
+  hasBackpack: boolean;
+  backpackColor: string;
+  hasHeadphones: boolean;
+  headphonesColor: string;
+  hasGlasses: boolean;
+  glassesColor: string;
+}
+
+export const DEFAULT_CHARACTER_CUSTOMIZATION: CharacterCustomization = {
+  name: 'Theo Lucca',
+  skinColor: '#c68652',
+  hairColor: '#22130b',
+  eyeColor: '#3b2110',
+  hasCap: true,
+  capColor: '#1d4ed8',
+  capStyle: 'forward',
+  shirtColor: '#2563eb',
+  shirtDecal: 'star',
+  shortsColor: '#1e293b',
+  shoeColor: '#dc2626',
+  hasBackpack: true,
+  backpackColor: '#78350f',
+  hasHeadphones: false,
+  headphonesColor: '#06b6d4',
+  hasGlasses: false,
+  glassesColor: '#0f172a',
+};
+
 export interface TheoLuccaRig {
   root: THREE.Group;
   body: THREE.Group;
@@ -31,6 +71,8 @@ export interface TheoLuccaRig {
   backpack: THREE.Group;
   heldProp: THREE.Group;
   setHeldPropType: (propType: 'none' | 'pizza' | 'wateringCan' | 'newspaper' | 'ball' | 'wrench') => void;
+  applyCustomization: (customization: CharacterCustomization) => void;
+  getCustomization: () => CharacterCustomization;
   updateAnimation: (
     time: number,
     speed: number,
@@ -191,7 +233,11 @@ export function createTheoLuccaModel(): TheoLuccaRig {
   torso.castShadow = true;
   torsoGroup.add(torso);
 
-  // Estrela Dourada no Peito (Emblema estilizado)
+  // Emblemas / Estampas no Peito Estilizadas (Estrela, Raio, Fogo, Diamante, Coração, Caveira)
+  const decalGroup = new THREE.Group();
+  torsoGroup.add(decalGroup);
+
+  // 1. Estrela Dourada
   const starShape = new THREE.Shape();
   const numPoints = 5;
   const outerR = 0.044;
@@ -205,10 +251,72 @@ export function createTheoLuccaModel(): TheoLuccaRig {
     else starShape.lineTo(px, py);
   }
   starShape.closePath();
-  const starGeo = new THREE.ShapeGeometry(starShape);
-  const starMesh = new THREE.Mesh(starGeo, starDecalMaterial);
+  const starMesh = new THREE.Mesh(new THREE.ShapeGeometry(starShape), starDecalMaterial);
   starMesh.position.set(0, 0.165, 0.148);
-  torsoGroup.add(starMesh);
+  decalGroup.add(starMesh);
+
+  // 2. Raio Elétrico
+  const lightningShape = new THREE.Shape();
+  lightningShape.moveTo(0.015, 0.04);
+  lightningShape.lineTo(-0.025, -0.005);
+  lightningShape.lineTo(-0.005, -0.005);
+  lightningShape.lineTo(-0.02, -0.04);
+  lightningShape.lineTo(0.025, 0.005);
+  lightningShape.lineTo(0.005, 0.005);
+  lightningShape.closePath();
+  const lightningMesh = new THREE.Mesh(new THREE.ShapeGeometry(lightningShape), starDecalMaterial);
+  lightningMesh.position.set(0, 0.165, 0.148);
+  lightningMesh.visible = false;
+  decalGroup.add(lightningMesh);
+
+  // 3. Fogo / Flame
+  const fireShape = new THREE.Shape();
+  fireShape.moveTo(0, 0.045);
+  fireShape.quadraticCurveTo(0.03, 0.01, 0.025, -0.035);
+  fireShape.quadraticCurveTo(0, -0.045, -0.025, -0.035);
+  fireShape.quadraticCurveTo(-0.03, 0.01, 0, 0.045);
+  fireShape.closePath();
+  const fireMesh = new THREE.Mesh(new THREE.ShapeGeometry(fireShape), starDecalMaterial);
+  fireMesh.position.set(0, 0.165, 0.148);
+  fireMesh.visible = false;
+  decalGroup.add(fireMesh);
+
+  // 4. Diamante
+  const diamondShape = new THREE.Shape();
+  diamondShape.moveTo(0, 0.04);
+  diamondShape.lineTo(0.03, 0);
+  diamondShape.lineTo(0, -0.04);
+  diamondShape.lineTo(-0.03, 0);
+  diamondShape.closePath();
+  const diamondMesh = new THREE.Mesh(new THREE.ShapeGeometry(diamondShape), starDecalMaterial);
+  diamondMesh.position.set(0, 0.165, 0.148);
+  diamondMesh.visible = false;
+  decalGroup.add(diamondMesh);
+
+  // 5. Coração
+  const heartShape = new THREE.Shape();
+  heartShape.moveTo(0, -0.035);
+  heartShape.bezierCurveTo(0.035, -0.01, 0.04, 0.025, 0.02, 0.038);
+  heartShape.bezierCurveTo(0.005, 0.045, 0, 0.02, 0, 0.01);
+  heartShape.bezierCurveTo(0, 0.02, -0.005, 0.045, -0.02, 0.038);
+  heartShape.bezierCurveTo(-0.04, 0.025, -0.035, -0.01, 0, -0.035);
+  heartShape.closePath();
+  const heartMesh = new THREE.Mesh(new THREE.ShapeGeometry(heartShape), starDecalMaterial);
+  heartMesh.position.set(0, 0.165, 0.148);
+  heartMesh.visible = false;
+  decalGroup.add(heartMesh);
+
+  // 6. Caveira Radical
+  const skullShape = new THREE.Shape();
+  skullShape.moveTo(-0.022, 0.02);
+  skullShape.quadraticCurveTo(0, 0.046, 0.022, 0.02);
+  skullShape.lineTo(0.018, -0.018);
+  skullShape.lineTo(-0.018, -0.018);
+  skullShape.closePath();
+  const skullMesh = new THREE.Mesh(new THREE.ShapeGeometry(skullShape), starDecalMaterial);
+  skullMesh.position.set(0, 0.165, 0.148);
+  skullMesh.visible = false;
+  decalGroup.add(skullMesh);
 
   // Gola Canelada Redonda
   const collarGeo = new THREE.TorusGeometry(0.076, 0.016, 8, 20);
@@ -477,6 +585,111 @@ export function createTheoLuccaModel(): TheoLuccaRig {
   const capButton = new THREE.Mesh(capButtonGeo, shirtMaterial);
   capButton.position.set(0, 0.146, 0);
   capGroup.add(capButton);
+
+  // Cabelo do Topo da Cabeça (visível quando Theo está sem boné)
+  const hairCrownGroup = new THREE.Group();
+  hairCrownGroup.visible = false;
+  const crownGeo = new THREE.SphereGeometry(0.142, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.52);
+  const crownMesh = new THREE.Mesh(crownGeo, hairMaterial);
+  crownMesh.position.set(0, 0.05, 0);
+  hairCrownGroup.add(crownMesh);
+  const topCurls: Array<[number, number, number]> = [
+    [0, 0.145, 0.02],
+    [-0.05, 0.138, 0.04],
+    [0.05, 0.138, 0.04],
+    [0, 0.142, -0.04],
+    [-0.06, 0.125, -0.03],
+    [0.06, 0.125, -0.03],
+  ];
+  topCurls.forEach(([x, y, z]) => {
+    const c = new THREE.Mesh(curlGeoMed, hairMaterial);
+    c.position.set(x, y, z);
+    hairCrownGroup.add(c);
+  });
+  hairGroup.add(hairCrownGroup);
+
+  // Fone Gamer Futurista / Headset
+  const headphonesGroup = new THREE.Group();
+  headphonesGroup.name = 'accessory_headphones';
+  headphonesGroup.visible = false;
+  head.add(headphonesGroup);
+
+  const headphonesMaterial = new THREE.MeshStandardMaterial({
+    color: 0x06b6d4, // Ciano neon gamer
+    roughness: 0.25,
+    metalness: 0.6,
+  });
+  const headphonesCushionMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.6,
+  });
+
+  const archGeo = new THREE.TorusGeometry(0.148, 0.012, 6, 24, Math.PI);
+  archGeo.rotateZ(Math.PI);
+  const arch = new THREE.Mesh(archGeo, headphonesMaterial);
+  arch.position.set(0, 0.06, 0);
+  headphonesGroup.add(arch);
+
+  for (const isLeft of [true, false]) {
+    const earCup = new THREE.Group();
+    earCup.position.set(isLeft ? -0.152 : 0.152, 0.01, 0);
+
+    const outerGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.024, 16);
+    outerGeo.rotateZ(Math.PI / 2);
+    const outer = new THREE.Mesh(outerGeo, headphonesMaterial);
+    earCup.add(outer);
+
+    const cushionGeo = new THREE.CylinderGeometry(0.034, 0.034, 0.014, 16);
+    cushionGeo.rotateZ(Math.PI / 2);
+    const cushion = new THREE.Mesh(cushionGeo, headphonesCushionMaterial);
+    cushion.position.x = isLeft ? 0.012 : -0.012;
+    earCup.add(cushion);
+
+    headphonesGroup.add(earCup);
+  }
+
+  // Óculos Escuros / Estilosos
+  const glassesGroup = new THREE.Group();
+  glassesGroup.name = 'accessory_glasses';
+  glassesGroup.visible = false;
+  head.add(glassesGroup);
+
+  const glassesFrameMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.3,
+    metalness: 0.4,
+  });
+  const glassesLensMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0284c7,
+    roughness: 0.1,
+    metalness: 0.85,
+  });
+
+  const bridgeGeo = new THREE.BoxGeometry(0.025, 0.007, 0.01);
+  const bridge = new THREE.Mesh(bridgeGeo, glassesFrameMaterial);
+  bridge.position.set(0, 0.025, 0.142);
+  glassesGroup.add(bridge);
+
+  for (const isLeft of [true, false]) {
+    const lensGroup = new THREE.Group();
+    lensGroup.position.set(isLeft ? -0.048 : 0.048, 0.022, 0.138);
+
+    const frameGeo = new THREE.BoxGeometry(0.052, 0.032, 0.008);
+    const frame = new THREE.Mesh(frameGeo, glassesFrameMaterial);
+    lensGroup.add(frame);
+
+    const lensGeo = new THREE.BoxGeometry(0.044, 0.024, 0.006);
+    const lens = new THREE.Mesh(lensGeo, glassesLensMaterial);
+    lens.position.z = 0.003;
+    lensGroup.add(lens);
+
+    const templeGeo = new THREE.BoxGeometry(0.005, 0.007, 0.14);
+    const temple = new THREE.Mesh(templeGeo, glassesFrameMaterial);
+    temple.position.set(isLeft ? -0.024 : 0.024, 0.008, -0.068);
+    lensGroup.add(temple);
+
+    glassesGroup.add(lensGroup);
+  }
 
   // --- BRAÇOS ARTICULADOS COM MÃOZINHAS INFANTIS DETALHADAS ---
   // Função para criar braço completo
@@ -842,6 +1055,85 @@ export function createTheoLuccaModel(): TheoLuccaRig {
     }
   };
 
+  let currentCustomization: CharacterCustomization = { ...DEFAULT_CHARACTER_CUSTOMIZATION };
+
+  const applyCustomization = (custom: CharacterCustomization) => {
+    currentCustomization = { ...custom };
+
+    // 1. Pele
+    try {
+      skinMaterial.color.set(custom.skinColor);
+    } catch {}
+
+    // 2. Cabelo
+    try {
+      hairMaterial.color.set(custom.hairColor);
+    } catch {}
+
+    // 3. Olhos
+    try {
+      eyeIrisMaterial.color.set(custom.eyeColor);
+    } catch {}
+
+    // 4. Boné
+    capGroup.visible = custom.hasCap;
+    try {
+      capMaterial.color.set(custom.capColor);
+      capVisorUndersideMat.color.set(custom.capColor);
+    } catch {}
+    capGroup.rotation.y = custom.capStyle === 'backward' ? Math.PI : 0;
+    hairCrownGroup.visible = !custom.hasCap;
+
+    // 5. Camiseta e Gola
+    try {
+      shirtMaterial.color.set(custom.shirtColor);
+      const shirtCol = new THREE.Color(custom.shirtColor);
+      collarMaterial.color.copy(shirtCol).multiplyScalar(0.8);
+    } catch {}
+
+    // 6. Decalque no Peito
+    starMesh.visible = custom.shirtDecal === 'star';
+    lightningMesh.visible = custom.shirtDecal === 'lightning';
+    fireMesh.visible = custom.shirtDecal === 'fire';
+    diamondMesh.visible = custom.shirtDecal === 'diamond';
+    heartMesh.visible = custom.shirtDecal === 'heart';
+    skullMesh.visible = custom.shirtDecal === 'skull';
+
+    // 7. Bermuda
+    try {
+      shortsMaterial.color.set(custom.shortsColor);
+    } catch {}
+
+    // 8. Tênis
+    try {
+      shoeRedMaterial.color.set(custom.shoeColor);
+    } catch {}
+
+    // 9. Mochila
+    backpack.visible = custom.hasBackpack;
+    try {
+      backpackLeatherMaterial.color.set(custom.backpackColor);
+      const packCol = new THREE.Color(custom.backpackColor);
+      backpackPocketMaterial.color.copy(packCol).offsetHSL(0, 0, 0.08);
+    } catch {}
+
+    // 10. Fone Gamer
+    headphonesGroup.visible = custom.hasHeadphones;
+    try {
+      headphonesMaterial.color.set(custom.headphonesColor);
+    } catch {}
+
+    // 11. Óculos
+    glassesGroup.visible = custom.hasGlasses;
+    try {
+      glassesFrameMaterial.color.set(custom.glassesColor);
+    } catch {}
+  };
+
+  const getCustomization = (): CharacterCustomization => {
+    return { ...currentCustomization };
+  };
+
   return {
     root,
     body,
@@ -857,6 +1149,8 @@ export function createTheoLuccaModel(): TheoLuccaRig {
     backpack,
     heldProp,
     setHeldPropType,
+    applyCustomization,
+    getCustomization,
     updateAnimation,
   };
 }

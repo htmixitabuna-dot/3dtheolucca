@@ -173,7 +173,7 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
         {/* CONTAINER DO RADAR GTA COM MOLDURA METÁLICA E BORDA DOURADA */}
         <div
           onClick={() => setIsExpanded(true)}
-          className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-2xl bg-slate-950/95 border-[3px] border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.5)] overflow-hidden cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center justify-center backdrop-blur-md"
+          className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-2xl bg-slate-950/95 border-[3px] border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.5)] overflow-hidden cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center justify-center"
           title="Toque para abrir o Mapa de Navegação GPS Completo"
         >
           {/* Fundo com Grade Tática / Radar */}
@@ -452,7 +452,7 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
            ========================================================================= */}
         <div 
           onClick={() => setIsExpanded(true)}
-          className="mt-1 w-full max-w-[176px] bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-400 rounded-xl px-2.5 py-1.5 shadow-2xl flex flex-col gap-0.5 cursor-pointer backdrop-blur-md transition hover:scale-105 active:scale-95"
+          className="mt-1 w-full max-w-[176px] bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-400 rounded-xl px-2.5 py-1.5 shadow-2xl flex flex-col gap-0.5 cursor-pointer transition hover:scale-105 active:scale-95"
         >
           <div className="flex items-center justify-between gap-1">
             <span className="text-[10px] font-black font-['Rajdhani'] uppercase tracking-wider text-amber-400 flex items-center gap-1 truncate">
@@ -481,7 +481,7 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
           2. MAPA DE NAVEGAÇÃO EXPANDIDO EM TELA CHEIA (MODAL GPS GTA)
          ========================================================================= */}
       {isExpanded && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-md pointer-events-auto animate-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 pointer-events-auto animate-fade-in font-sans">
           <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-400 rounded-3xl max-w-3xl w-full max-h-[95vh] flex flex-col shadow-[0_0_60px_rgba(245,158,11,0.5)] overflow-hidden">
             
             {/* CABEÇALHO DO GPS */}

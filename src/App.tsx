@@ -71,6 +71,7 @@ export default function App() {
     allCars: [],
     allMotos: [],
     expansionAnnouncement: null,
+    performanceMode: 'light',
   });
 
   // Inicialização do GameEngine Three.js
@@ -244,6 +245,10 @@ export default function App() {
     gameEngineRef.current?.startJob(jobId);
   };
 
+  const handleTogglePerformanceMode = () => {
+    gameEngineRef.current?.togglePerformanceMode();
+  };
+
   return (
     <div className="relative w-screen h-screen bg-slate-950 overflow-hidden select-none flex flex-col font-sans">
       
@@ -277,6 +282,7 @@ export default function App() {
             onOpenUnityCode={() => setActiveTab('unityCode')}
             onOpenBackpack={() => setShowBackpackModal(true)}
             onOpenJobsModal={() => setShowJobsModal(true)}
+            onTogglePerformanceMode={handleTogglePerformanceMode}
             onSwitchPhase={(phase) => gameEngineRef.current?.switchPhase(phase)}
             onActivateLightTube={() => gameEngineRef.current?.activateLightTube()}
             onSetGPSDestination={(x, z, name) => gameEngineRef.current?.setGPSDestination(x, z, name)}
@@ -320,7 +326,7 @@ export default function App() {
 
       {/* MODAL DE MISSÃO PRINCIPAL CONCLUÍDA */}
       {victoryMission && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in pointer-events-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 animate-fade-in pointer-events-auto">
           <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-400 rounded-2xl max-w-sm w-full p-5 text-center shadow-[0_0_50px_rgba(245,158,11,0.45)] space-y-4">
             
             <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-300 p-0.5 shadow-xl">

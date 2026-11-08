@@ -188,7 +188,7 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
         {/* CONTAINER CIRCULAR COM MOLDURA DOURADA E SOMBRA NEON */}
         <div
           onClick={() => setIsExpanded(true)}
-          className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-950/95 border-[3.5px] border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.55)] cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center justify-center backdrop-blur-md group overflow-visible"
+          className="relative w-20 h-20 min-[380px]:w-22 min-[380px]:h-22 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full bg-slate-950/95 border-[3px] sm:border-[3.5px] border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)] cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center justify-center group overflow-visible"
           title="Toque para abrir o Mapa GPS Completo"
         >
           {/* SVG DO RADAR CIRCULAR */}
@@ -564,7 +564,7 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
            ========================================================================= */}
         <div 
           onClick={() => setIsExpanded(true)}
-          className="mt-1 max-w-[130px] sm:max-w-[160px] w-full bg-slate-950/95 border-2 border-amber-400/90 rounded-xl px-2 py-1 shadow-xl flex items-center justify-between gap-1 cursor-pointer backdrop-blur-md transition hover:scale-105 active:scale-95"
+          className="mt-1 max-w-[95px] min-[380px]:max-w-[115px] sm:max-w-[130px] w-full bg-slate-950/95 border-2 border-amber-400/90 rounded-xl px-1.5 sm:px-2 py-0.5 sm:py-1 shadow-xl flex items-center justify-between gap-1 cursor-pointer transition hover:scale-105 active:scale-95"
           title="Clique para ver o trajeto no mapa ampliado"
         >
           <div className="flex items-center gap-1 min-w-0">
@@ -589,7 +589,7 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
           MODAL EXPANDIDO DO MAPA GPS EM TELA CHEIA
          ========================================================================= */}
       {isExpanded && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-md pointer-events-auto animate-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 pointer-events-auto animate-fade-in font-sans">
           <div className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-400 rounded-3xl max-w-3xl w-full max-h-[95vh] flex flex-col shadow-[0_0_60px_rgba(245,158,11,0.5)] overflow-hidden">
             
             {/* CABEÇALHO */}

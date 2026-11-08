@@ -145,11 +145,11 @@ export function createCityScene(): CitySceneObjects {
   const sunLight = new THREE.DirectionalLight(0xfff8ea, 2.65); // Sol mais forte e dourado
   sunLight.position.set(75, 105, 55);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 2048;
-  sunLight.shadow.mapSize.height = 2048;
+  sunLight.shadow.mapSize.width = 1024;
+  sunLight.shadow.mapSize.height = 1024;
   sunLight.shadow.camera.near = 0.5;
-  sunLight.shadow.camera.far = 270;
-  const d = 115;
+  sunLight.shadow.camera.far = 260;
+  const d = 110;
   sunLight.shadow.camera.left = -d;
   sunLight.shadow.camera.right = d;
   sunLight.shadow.camera.top = d;
@@ -3519,8 +3519,11 @@ export function createCityScene(): CitySceneObjects {
       curPos.z += Math.cos(car.rotationY) * car.speed * delta;
       car.group.rotation.y = car.rotationY;
 
-      for (const w of car.wheels) {
-        w.rotation.x += car.speed * delta * 2.8;
+      // LOD: só gira as rodas se o carro estiver próximo da câmera
+      if (distToTheo < 45) {
+        for (const w of car.wheels) {
+          w.rotation.x += car.speed * delta * 2.8;
+        }
       }
     });
 
@@ -3569,8 +3572,11 @@ export function createCityScene(): CitySceneObjects {
       curPos.z += Math.cos(moto.rotationY) * moto.speed * delta;
       moto.group.rotation.y = moto.rotationY;
 
-      for (const w of moto.wheels) {
-        w.rotation.x += moto.speed * delta * 3.2;
+      // LOD: só gira as rodas se a moto estiver próxima da câmera
+      if (distToTheo < 45) {
+        for (const w of moto.wheels) {
+          w.rotation.x += moto.speed * delta * 3.2;
+        }
       }
     });
 
@@ -3600,11 +3606,13 @@ export function createCityScene(): CitySceneObjects {
         // Se estiver em pausa breve apreciando a cidade
         if (npc.pauseTimer > 0) {
           npc.pauseTimer -= delta;
-          npc.leftArm.rotation.x = Math.sin(timeSec * 2) * 0.05;
-          npc.rightArm.rotation.x = -Math.sin(timeSec * 2) * 0.05;
-          npc.rightArm.rotation.z = 0;
-          npc.leftLeg.rotation.x = 0;
-          npc.rightLeg.rotation.x = 0;
+          if (distToTheo < 40) {
+            npc.leftArm.rotation.x = Math.sin(timeSec * 2) * 0.05;
+            npc.rightArm.rotation.x = -Math.sin(timeSec * 2) * 0.05;
+            npc.rightArm.rotation.z = 0;
+            npc.leftLeg.rotation.x = 0;
+            npc.rightLeg.rotation.x = 0;
+          }
         } else if (npc.waypoints && npc.waypoints.length > 0) {
           const targetWp = npc.waypoints[npc.waypointIndex];
           const dx = targetWp.x - curPos.x;
@@ -3632,14 +3640,16 @@ export function createCityScene(): CitySceneObjects {
             curPos.z += Math.cos(npc.group.rotation.y) * step;
             npc.position.copy(curPos);
 
-            // Animação de braços e pernas proporcional à velocidade
-            npc.walkTimer += delta * (npc.walkSpeed * 3.6);
-            const walkCycle = Math.sin(npc.walkTimer);
-            npc.leftArm.rotation.x = walkCycle * 0.5;
-            npc.rightArm.rotation.x = -walkCycle * 0.5;
-            npc.rightArm.rotation.z = 0;
-            npc.leftLeg.rotation.x = -walkCycle * 0.55;
-            npc.rightLeg.rotation.x = walkCycle * 0.55;
+            // LOD: Animação de braços e pernas somente para pedestres visíveis perto da câmera
+            if (distToTheo < 40) {
+              npc.walkTimer += delta * (npc.walkSpeed * 3.6);
+              const walkCycle = Math.sin(npc.walkTimer);
+              npc.leftArm.rotation.x = walkCycle * 0.5;
+              npc.rightArm.rotation.x = -walkCycle * 0.5;
+              npc.rightArm.rotation.z = 0;
+              npc.leftLeg.rotation.x = -walkCycle * 0.55;
+              npc.rightLeg.rotation.x = walkCycle * 0.55;
+            }
           }
         }
       }
