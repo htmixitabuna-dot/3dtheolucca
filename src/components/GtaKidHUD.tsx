@@ -16,12 +16,16 @@ import {
   BellRing,
   RotateCw,
   Sparkles,
-  Settings
+  Settings,
+  Shirt,
+  ShieldCheck,
+  Hammer
 } from 'lucide-react';
 import { CityHUDState, BackpackItem } from '../simulation/GameEngine';
 import { soundManager } from '../simulation/audio';
 import { NavigationMiniMap } from './NavigationMiniMap';
 import { CircularMiniMap } from './CircularMiniMap';
+import { BuildModeHUD } from './BuildModeHUD';
 
 export interface GtaKidHUDProps {
   hudState: CityHUDState;
@@ -44,6 +48,15 @@ export interface GtaKidHUDProps {
   onActivateLightTube?: () => void;
   onSetGPSDestination?: (x: number, z: number, name: string) => void;
   onTogglePerformanceMode?: () => void;
+  onOpenCustomizer?: () => void;
+  // Novos recursos: Economia, Loja Esmeralda, Inventário Categorizado, Construção & Admin
+  onOpenEsmeraldaStore?: () => void;
+  onOpenInventory?: () => void;
+  onOpenAdminPanel?: () => void;
+  onConfirmBuildPlacement?: () => void;
+  onRotateBuildPlacement?: () => void;
+  onCancelBuildPlacement?: () => void;
+  onDismantleNearestBuilding?: () => void;
 }
 
 export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
@@ -67,6 +80,14 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   onActivateLightTube,
   onSetGPSDestination,
   onTogglePerformanceMode,
+  onOpenCustomizer,
+  onOpenEsmeraldaStore,
+  onOpenInventory,
+  onOpenAdminPanel,
+  onConfirmBuildPlacement,
+  onRotateBuildPlacement,
+  onCancelBuildPlacement,
+  onDismantleNearestBuilding,
 }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [touchSensitivity, setTouchSensitivity] = useState(1.4);
@@ -245,31 +266,51 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
           onSetGPSDestination={onSetGPSDestination}
         />
 
-        {/* CARD THEO LUCCA (4 ANOS) COM FÔLEGO E BOTÃO DA MOCHILA */}
-        <div className="hidden min-[430px]:flex items-center gap-1.5 bg-slate-950/95 border border-slate-700/80 rounded-xl p-1.5 shadow-xl max-w-[125px] sm:max-w-[155px]">
+        {/* CARD DO PERSONAGEM COM FÔLEGO E BOTÃO DE PERSONALIZAR */}
+        <div 
+          onClick={onOpenCustomizer}
+          className="hidden min-[430px]:flex items-center gap-1.5 bg-slate-950/95 border border-slate-700/80 hover:border-amber-400/80 cursor-pointer rounded-xl p-1.5 shadow-xl max-w-[130px] sm:max-w-[165px] transition group"
+          title="Clique para Personalizar Nome, Roupas, Boné, Sapatos e Cabelo"
+        >
           <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-800 p-0.5 shadow flex-shrink-0">
             <div className="w-full h-full rounded-md bg-slate-950 flex items-center justify-center overflow-hidden relative">
-              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#c68652] relative flex items-center justify-center shadow">
-                <div className="absolute -top-1 w-4 sm:w-5 h-3 bg-blue-600 rounded-t-full border-b border-blue-800" />
-                <div className="absolute -top-0.5 right-0.5 w-2 sm:w-2.5 h-1.5 bg-blue-700 rounded-r-full" />
+              <div 
+                className="w-5 h-5 sm:w-6 sm:h-6 rounded-full relative flex items-center justify-center shadow"
+                style={{ backgroundColor: hudState.characterCustomization?.skinColor || '#c68652' }}
+              >
+                {hudState.characterCustomization?.hasCap !== false && (
+                  <>
+                    <div 
+                      className="absolute -top-1 w-4 sm:w-5 h-3 rounded-t-full border-b"
+                      style={{ backgroundColor: hudState.characterCustomization?.capColor || '#1d4ed8' }}
+                    />
+                    <div 
+                      className="absolute -top-0.5 right-0.5 w-2 sm:w-2.5 h-1.5 rounded-r-full"
+                      style={{ backgroundColor: hudState.characterCustomization?.capColor || '#1d4ed8' }}
+                    />
+                  </>
+                )}
                 <div className="flex gap-1 mt-1">
                   <div className="w-1 h-1 rounded-full bg-slate-900" />
                   <div className="w-1 h-1 rounded-full bg-slate-900" />
                 </div>
               </div>
             </div>
-            <span className="absolute -bottom-1 -right-1 px-1 py-0.2 bg-amber-500 text-slate-950 text-[7.5px] sm:text-[8.5px] font-black rounded shadow">
-              4a
+            <span className="absolute -bottom-1 -right-1 px-1 py-0.2 bg-amber-500 text-slate-950 text-[7px] sm:text-[8px] font-black rounded shadow">
+              👕
             </span>
           </div>
 
           <div className="flex flex-col gap-0.5 flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[9.5px] sm:text-[11px] font-black tracking-tight text-white truncate font-['Rajdhani']">
-                THEO LUCCA
+              <span className="text-[9.5px] sm:text-[11px] font-black tracking-tight text-white truncate font-['Rajdhani'] uppercase group-hover:text-amber-300 transition">
+                {hudState.characterName || 'THEO LUCCA'}
               </span>
               <button
-                onClick={onOpenBackpack}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenBackpack();
+                }}
                 className="px-1 py-0.2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 rounded text-amber-300 text-[8px] sm:text-[8.5px] font-bold flex items-center gap-0.5"
                 title="Abrir Mochila"
               >
@@ -300,29 +341,42 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
         </div>
       </div>
 
-      {/* 2. CENTRO: CARTEIRA R$ EM DESTAQUE + FASE ATUAL */}
+      {/* 2. CENTRO: CARTEIRA MULTIMOEDAS COMPACTA (OURO 🪙, DIAMANTES 💎, ESMERALDAS ❇️) */}
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center gap-1">
-        {/* CARTEIRA R$ EM DESTAQUE COM MOEDAS DOURADAS */}
-        <div className="bg-gradient-to-r from-slate-950/95 via-slate-900/95 to-slate-950/95 border-2 border-amber-400 rounded-full px-2 sm:px-3 py-0.5 sm:py-1 shadow-2xl flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-950 font-black shadow-inner flex-shrink-0">
-            <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 fill-current" />
-          </div>
-
-          <div className="flex items-baseline gap-1">
-            <span className="hidden sm:inline text-[10px] sm:text-[11px] font-bold text-amber-300 font-mono">CARTEIRA:</span>
-            <span className="text-xs sm:text-base font-black text-amber-400 font-mono tracking-wide">
-              R$ {hudState.money.toFixed(2)}
+        {/* CARTEIRA COMPACTA COM AS 3 MOEDAS SEPARADAS */}
+        <div className="bg-gradient-to-r from-slate-950/95 via-slate-900/95 to-slate-950/95 border-2 border-amber-400/90 rounded-full px-2.5 sm:px-3 py-0.5 sm:py-1 shadow-2xl flex items-center gap-1.5 sm:gap-2.5 whitespace-nowrap">
+          {/* Ouro (Recurso Gratuito) */}
+          <div className="flex items-center gap-1 font-mono" title="Ouro: ganhe trabalhando e coletando moedas">
+            <span className="text-xs sm:text-sm">🪙</span>
+            <span className="text-[10px] sm:text-xs font-black text-amber-300">
+              {hudState.wallet?.gold ?? Math.round(hudState.money)}
             </span>
           </div>
 
-          <div className="border-l border-slate-700 pl-1.5 text-[9px] font-mono text-slate-300 hidden md:block">
-            ★ {hudState.coinsCollected}/{hudState.totalCoins} Moedas
+          <div className="h-2.5 w-px bg-slate-700" />
+
+          {/* Diamantes (Recurso Especial) */}
+          <div className="flex items-center gap-1 font-mono" title="Diamantes: encontre em locais especiais e fases">
+            <span className="text-xs sm:text-sm">💎</span>
+            <span className="text-[10px] sm:text-xs font-black text-cyan-300">
+              {hudState.wallet?.diamonds ?? 0}
+            </span>
+          </div>
+
+          <div className="h-2.5 w-px bg-slate-700" />
+
+          {/* Esmeraldas (Moeda Premium) */}
+          <div className="flex items-center gap-1 font-mono" title="Esmeraldas: moeda premium da Esmeralda Store">
+            <span className="text-xs sm:text-sm">❇️</span>
+            <span className="text-[10px] sm:text-xs font-black text-emerald-300">
+              {hudState.wallet?.emeralds ?? 0}
+            </span>
           </div>
         </div>
 
         {/* BADGE DA FASE ATUAL & BOTÃO TUBO DE LUZ */}
-        <div className="flex items-center gap-1 max-w-[150px] sm:max-w-none">
-          <div className={`px-2 py-0.2 rounded-full border text-[8.5px] sm:text-[9.5px] font-black tracking-wide font-['Rajdhani'] uppercase flex items-center gap-1 shadow-md whitespace-nowrap truncate max-w-[105px] sm:max-w-none ${
+        <div className="flex items-center gap-1 max-w-[140px] sm:max-w-none">
+          <div className={`px-2 py-0.2 rounded-full border text-[8.5px] sm:text-[9.5px] font-black tracking-wide font-['Rajdhani'] uppercase flex items-center gap-1 shadow-md whitespace-nowrap truncate max-w-[100px] sm:max-w-none ${
             hudState.currentPhase === 1 
               ? 'bg-sky-950/90 border-sky-400 text-sky-200' 
               : (hudState.currentPhase === 2 ? 'bg-indigo-950/90 border-cyan-400 text-cyan-200' : 'bg-amber-950/90 border-amber-400 text-amber-200')
@@ -344,7 +398,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
         </div>
       </div>
 
-      {/* 3. CANTO SUPERIOR DIREITO: BOTÕES DE CONTROLE RÁPIDO ANCORADOS FIRMEMENTE */}
+      {/* 3. CANTO SUPERIOR DIREITO: BOTÕES DE CONTROLE RÁPIDO COMPACTOS (SEM SOBREPOSIÇÃO) */}
       <div className="absolute top-2 right-2 z-30 pointer-events-auto flex items-center gap-1 sm:gap-1.5">
         {/* BOTÃO ALTERNAR MODO LEVE (60 FPS NÍTIDO) / MODO NORMAL */}
         {onTogglePerformanceMode && (
@@ -366,6 +420,17 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
           </button>
         )}
 
+        {/* BOTÃO PAINEL ADMINISTRATIVO (PIN 1234) */}
+        {onOpenAdminPanel && (
+          <button
+            onClick={onOpenAdminPanel}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-purple-500/80 text-purple-300 hover:text-white hover:bg-purple-950/60 flex items-center justify-center transition shadow active:scale-95"
+            title="Painel Administrativo da Loja e Economia (PIN 1234)"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400" />
+          </button>
+        )}
+
         <button
           onClick={() => {
             const nextMuted = !isMuted;
@@ -381,20 +446,32 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
         >
           {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
         </button>
+
         <button
           onClick={() => setShowSettingsModal(true)}
           className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-900 flex items-center justify-center transition shadow"
-          title="Configurações e Arquivos Unity C#"
+          title="Configurações, Menu e Trabalhos"
         >
           <Settings className="w-3.5 h-3.5" />
         </button>
+
+        {/* BOTÕES EXTRAS EXIBIDOS EM TELAS MAIORES (TABLET/PC) PARA EVITAR POLUIÇÃO NO CELULAR */}
         <button
           onClick={onOpenJobsModal}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-emerald-500/80 text-emerald-400 hover:bg-slate-900 flex items-center justify-center transition shadow"
+          className="hidden md:flex w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-emerald-500/80 text-emerald-400 hover:bg-slate-900 items-center justify-center transition shadow"
           title="Ver Trabalhos da Cidade"
         >
           <Briefcase className="w-3.5 h-3.5" />
         </button>
+        {onOpenCustomizer && (
+          <button
+            onClick={onOpenCustomizer}
+            className="hidden md:flex w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-cyan-500/80 text-cyan-400 hover:bg-slate-900 items-center justify-center transition shadow active:scale-95"
+            title="Personalizar Personagem (Nome, Roupas, Boné, Sapatos, Cabelo)"
+          >
+            <Shirt className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* NOTIFICAÇÃO DE LOCAL / DENTRO DA LOJA */}
@@ -546,14 +623,18 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
 
         {/* Coluna 2: Mochila no topo + Falar e Comprar */}
         <div className="flex flex-col items-center gap-1.5 sm:gap-2">
-          {/* BOTÃO MOCHILA INFANTIL AMARRELA DO THEO */}
+          {/* BOTÃO MOCHILA INFANTIL DO THEO / INVENTÁRIO */}
           <button
             onClick={() => {
               soundManager.playPopClick();
-              onOpenBackpack();
+              if (onOpenInventory) {
+                onOpenInventory();
+              } else {
+                onOpenBackpack();
+              }
             }}
             className="w-14 h-14 sm:w-16 sm:h-16 rounded-[18px] bg-gradient-to-b from-[#fde047] via-[#facc15] to-[#eab308] border-[3.5px] border-[#5c2e0b] shadow-[0_4px_0_#3d1a03,0_8px_16px_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-[0_1px_0_#3d1a03] flex flex-col items-center justify-center relative cursor-pointer animate-kid-backpack transition-transform"
-            title="Abrir Mochila do Theo Lucca"
+            title="Abrir Inventário e Mochila do Theo Lucca"
             aria-label="Abrir Mochila"
           >
             {/* BADGE COM NÚMERO DE ITENS */}
@@ -591,18 +672,24 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
             <span className="text-[7.5px] sm:text-[8px] font-bold font-mono text-slate-200">FALAR</span>
           </button>
 
-          {/* BOTÃO COMPRAR (ABRE A LOJA) */}
+          {/* BOTÃO LOJA (ABRE A ESMERALDA STORE OFICIAL) */}
           <button
-            onClick={() => onOpenShop()}
+            onClick={() => {
+              if (onOpenEsmeraldaStore) {
+                onOpenEsmeraldaStore();
+              } else {
+                onOpenShop();
+              }
+            }}
             className={`w-11 h-11 sm:w-13 sm:h-13 rounded-full border-2 flex flex-col items-center justify-center shadow-xl transition active:scale-95 ${
               isNearShop
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 border-purple-300 text-white font-black'
-                : 'bg-slate-900/90 border-slate-700 text-slate-200'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 border-emerald-300 text-white font-black shadow-[0_0_15px_rgba(16,185,129,0.5)]'
+                : 'bg-slate-900/90 border-purple-500/80 text-purple-300 hover:text-white'
             }`}
-            title="Abrir Loja de Brinquedos, Mercado ou Roupas"
+            title="Abrir Esmeralda Store (Loja Oficial do Jogo)"
           >
-            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
-            <span className="text-[7.5px] sm:text-[8px] font-bold font-mono">COMPRAR</span>
+            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+            <span className="text-[7.5px] sm:text-[8px] font-bold font-mono text-white">LOJA</span>
           </button>
         </div>
 
@@ -703,6 +790,54 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
                 <span>Mochila e Inventário do Theo</span>
                 <span className="text-sm font-mono">&rarr;</span>
               </button>
+
+              {onOpenCustomizer && (
+                <button
+                  onClick={() => {
+                    setShowSettingsModal(false);
+                    onOpenCustomizer();
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-bold flex items-center justify-between transition shadow-md"
+                >
+                  <span className="flex items-center gap-2">
+                    <Shirt className="w-4 h-4" />
+                    <span>Personalizar Personagem (Nome, Roupas, Boné)</span>
+                  </span>
+                  <span className="text-sm font-mono">&rarr;</span>
+                </button>
+              )}
+
+              {onOpenEsmeraldaStore && (
+                <button
+                  onClick={() => {
+                    setShowSettingsModal(false);
+                    onOpenEsmeraldaStore();
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold flex items-center justify-between transition shadow-md"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🛍️</span>
+                    <span>Esmeralda Store (Loja Oficial do Jogo)</span>
+                  </span>
+                  <span className="text-sm font-mono">&rarr;</span>
+                </button>
+              )}
+
+              {onOpenAdminPanel && (
+                <button
+                  onClick={() => {
+                    setShowSettingsModal(false);
+                    onOpenAdminPanel();
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-purple-950/80 border border-purple-500/60 hover:bg-purple-900 text-purple-200 font-bold flex items-center justify-between transition shadow-md"
+                >
+                  <span className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-purple-400" />
+                    <span>Painel Administrativo da Loja (PIN 1234)</span>
+                  </span>
+                  <span className="text-sm font-mono">&rarr;</span>
+                </button>
+              )}
             </div>
 
             {/* OPÇÕES DE DESEMPENHO (PC FRACO E ANDROID) */}
@@ -820,6 +955,19 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* OVERLAY DE MODO DE CONSTRUÇÃO (HOLOGRAMA, GIRAR, CONFIRMAR, CANCELAR E RECOLHER) */}
+      {hudState.isBuildModeActive && (
+        <BuildModeHUD
+          activeItem={hudState.buildModeItem}
+          isValid={hudState.isBuildPlacementValid}
+          onRotate={onRotateBuildPlacement || (() => {})}
+          onConfirm={onConfirmBuildPlacement || (() => {})}
+          onCancel={onCancelBuildPlacement || (() => {})}
+          onDismantleNearest={onDismantleNearestBuilding}
+          nearestBuildingName={hudState.nearestPlacedBuildingName}
+        />
       )}
 
     </div>

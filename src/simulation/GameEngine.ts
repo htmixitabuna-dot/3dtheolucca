@@ -10,6 +10,9 @@ import { createCityScene, CitySceneObjects, CityCar, CityMoto, CityNPC } from '.
 import { soundManager } from './audio';
 import { PhasesManager } from './PhasesManager';
 import { cityVoiceManager } from './voiceManager';
+import { economyManager } from './EconomyManager';
+import { BuildingManager } from './BuildingManager';
+import { PlayerWallet, InventoryItem } from '../types/economy';
 
 export interface BackpackItem {
   id: string;
@@ -82,6 +85,12 @@ export interface CityHUDState {
   performanceMode: 'light' | 'normal';
   characterCustomization: CharacterCustomization;
   characterName: string;
+  // Sistema Completo de Economia & Construção
+  wallet: PlayerWallet;
+  isBuildModeActive: boolean;
+  buildModeItem: InventoryItem | null;
+  isBuildPlacementValid: boolean;
+  nearestPlacedBuildingName?: string | null;
 }
 
 export interface GameEngineCallbacks {
@@ -154,6 +163,9 @@ export class GameEngine {
   private collectedAvaritia = 0;
   private totalAvaritia = 8;
   private teleportCooldown = 0;
+
+  // Sistema de Construção e Prédios do Jogador
+  private buildingManager!: BuildingManager;
 
   // Sistema de Expansão Dinâmica da Cidade
   private cityExpansionLevel = 1;
@@ -246,6 +258,28 @@ export class GameEngine {
     this.cityScene.scene.environment = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
     this.phasesManager = new PhasesManager(this.cityScene.scene);
+
+    // Inicializa o Gerenciador de Construção da Cidade (Terrenos, Casas, Lojas e Decorações)
+    this.buildingManager = new BuildingManager(this.cityScene.scene, this.cityScene.colliders, {
+      onBuildingPlaced: (bld) => {
+        soundManager.playStarCollect();
+        this.dialogueText = `Construção "${bld.name}" posicionada com sucesso!`;
+        this.dialogueTimer = 4.0;
+      },
+      onBuildingRemoved: (bld) => {
+        soundManager.playPurchase();
+        this.dialogueText = `"${bld.name}" recolhida e retornada ao inventário!`;
+        this.dialogueTimer = 4.0;
+      },
+      onStatusMessage: (msg, isErr) => {
+        this.dialogueText = msg;
+        this.dialogueTimer = 4.0;
+        if (isErr) soundManager.playPopClick();
+      },
+    });
+
+    // Sincroniza saldo inicial de ouro com a carteira econômica segura
+    this.money = economyManager.getWallet().gold;
 
     this.player = createTheoLuccaModel();
     this.player.root.position.copy(this.playerPos);
@@ -642,7 +676,8 @@ export class GameEngine {
 
         // Trabalho Concluído com Sucesso!
         const reward = this.activeJob.reward;
-        this.money += reward;
+        economyManager.addFunds('gold', reward, `Salário do trabalho: ${this.activeJob.name}`);
+        this.money = economyManager.getWallet().gold;
         this.jobsFinishedCount++;
         soundManager.playCashEarn();
 
@@ -676,13 +711,14 @@ export class GameEngine {
 
   // --- SISTEMA DE COMPRAS NAS LOJAS ---
   public buyItem(item: BackpackItem): boolean {
-    if (this.money < item.price) {
+    const success = economyManager.spendFunds('gold', item.price, `Compra na loja: ${item.name}`);
+    if (!success) {
       this.dialogueText = `Dinheiro insuficiente! Você precisa de R$ ${item.price},00. Trabalhe mais para juntar moedas!`;
       this.dialogueTimer = 4.0;
       return false;
     }
 
-    this.money -= item.price;
+    this.money = economyManager.getWallet().gold;
     this.backpack.push(item);
     soundManager.playPurchase();
     this.callbacks.onItemPurchased(item);
@@ -732,7 +768,8 @@ export class GameEngine {
     mission.progress = Math.min(mission.total, progressVal);
     if (mission.progress >= mission.total) {
       mission.completed = true;
-      this.money += mission.reward;
+      economyManager.addFunds('gold', mission.reward, `Recompensa: ${mission.title}`);
+      this.money = economyManager.getWallet().gold;
       soundManager.playMissionComplete();
       this.callbacks.onMissionCompleted(mission.title, mission.reward);
 
@@ -1124,6 +1161,14 @@ export class GameEngine {
       false,
       this.activeJob !== null
     );
+
+    // Se o Modo de Construção estiver ativo, atualiza a posição do holograma na frente do personagem
+    if (this.buildingManager && this.buildingManager.getActiveItem()) {
+      const frontDist = 4.0;
+      const targetX = this.playerPos.x - Math.sin(this.playerRotationY) * frontDist;
+      const targetZ = this.playerPos.z - Math.cos(this.playerRotationY) * frontDist;
+      this.buildingManager.updatePreviewPosition(new THREE.Vector3(targetX, 0, targetZ));
+    }
   }
 
   private updateCamera(delta: number) {
@@ -1168,7 +1213,8 @@ export class GameEngine {
       if (d < 1.6) {
         coin.collected = true;
         coin.mesh.visible = false;
-        this.money += coin.value;
+        economyManager.addFunds('gold', coin.value, 'Moeda coletada no mapa');
+        this.money = economyManager.getWallet().gold;
         this.coinsCollected++;
         soundManager.playCoinCollect();
 
@@ -1246,6 +1292,7 @@ export class GameEngine {
             d.mesh.visible = false;
             this.collectedDiamonds++;
             soundManager.playDiamondCollect();
+            economyManager.addFunds('diamonds', 1, 'Diamante coletado no Mundo dos Diamantes');
             this.callbacks.onCoinCollected(10, this.coinsCollected);
 
             this.dialogueText = `💎 Diamante Mágico coletado! (${this.collectedDiamonds}/${this.totalDiamonds})`;
@@ -1253,6 +1300,8 @@ export class GameEngine {
 
             if (this.collectedDiamonds >= this.totalDiamonds) {
               soundManager.playMissionComplete();
+              economyManager.addFunds('diamonds', 5, 'Bônus de conclusão do Mundo dos Diamantes');
+              economyManager.addFunds('emeralds', 2, 'Bônus Premium de Fase Concluída');
               this.callbacks.onMissionCompleted('Mundo dos Diamantes', 100);
               const portalPos = this.phasesManager.activateLightTubeForCurrentPhase();
               this.cityScene.setBeaconPosition(portalPos);
@@ -1274,6 +1323,8 @@ export class GameEngine {
             a.mesh.visible = false;
             this.collectedAvaritia++;
             soundManager.playAvaritiaCollect();
+            economyManager.addFunds('gold', 15, 'Relíquia de Avaritia coletada');
+            this.money = economyManager.getWallet().gold;
             this.callbacks.onCoinCollected(15, this.coinsCollected);
 
             this.dialogueText = `✨ Relíquia de Avaritia coletada! (${this.collectedAvaritia}/${this.totalAvaritia})`;
@@ -1281,6 +1332,9 @@ export class GameEngine {
 
             if (this.collectedAvaritia >= this.totalAvaritia) {
               soundManager.playMissionComplete();
+              economyManager.addFunds('gold', 150, 'Bônus de Vitória em Avaritia');
+              economyManager.addFunds('emeralds', 5, 'Bônus Premium Vitória Avaritia');
+              this.money = economyManager.getWallet().gold;
               this.callbacks.onMissionCompleted('Vale Dourado de Avaritia', 150);
               const portalPos = this.phasesManager.activateLightTubeForCurrentPhase();
               this.cityScene.setBeaconPosition(portalPos);
@@ -1527,6 +1581,12 @@ export class GameEngine {
       performanceMode: this.performanceMode,
       characterCustomization: this.characterCustomization,
       characterName: this.characterCustomization.name || 'Theo Lucca',
+      // Sistema de Economia & Construção
+      wallet: economyManager.getWallet(),
+      isBuildModeActive: !!this.buildingManager?.getActiveItem(),
+      buildModeItem: this.buildingManager?.getActiveItem() || null,
+      isBuildPlacementValid: (this.buildingManager as any)?.isCurrentPlacementValid ?? true,
+      nearestPlacedBuildingName: this.buildingManager?.getNearestPlacedBuilding(this.playerPos, 5.0)?.name || null,
     });
   }
 
@@ -1603,6 +1663,86 @@ export class GameEngine {
 
   public getPerformanceMode(): 'light' | 'normal' {
     return this.performanceMode;
+  }
+
+  public updateCharacterCustomization(newCustom: CharacterCustomization) {
+    this.characterCustomization = { ...newCustom };
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('theo_lucca_customization', JSON.stringify(newCustom));
+      }
+    } catch {
+      // ignore
+    }
+    this.player.applyCustomization(this.characterCustomization);
+    this.dispatchHUDData();
+  }
+
+  public getCharacterCustomization(): CharacterCustomization {
+    return { ...this.characterCustomization };
+  }
+
+  // --- MODO DE CONSTRUÇÃO E GERENCIAMENTO DE PRÉDIOS DO JOGADOR ---
+  public startBuildingPlacement(item: InventoryItem) {
+    if (!this.buildingManager) return;
+    this.buildingManager.setExpansionLevel(this.cityExpansionLevel);
+    const frontDist = 4.0;
+    const targetX = this.playerPos.x - Math.sin(this.playerRotationY) * frontDist;
+    const targetZ = this.playerPos.z - Math.cos(this.playerRotationY) * frontDist;
+    this.buildingManager.startPlacingItem(item, new THREE.Vector3(targetX, 0, targetZ));
+    this.dispatchHUDData();
+  }
+
+  public rotateBuildingPreview() {
+    if (!this.buildingManager) return;
+    this.buildingManager.rotatePreview();
+    soundManager.playPopClick();
+    this.dispatchHUDData();
+  }
+
+  public confirmBuildingPlacement() {
+    if (!this.buildingManager) return { success: false, message: 'Gerenciador indisponível' };
+    const res = this.buildingManager.confirmPlacement();
+    if (res.success) {
+      soundManager.playStarCollect();
+      this.dialogueText = res.message;
+      this.dialogueTimer = 4.0;
+    } else {
+      soundManager.playPopClick();
+      this.dialogueText = res.message;
+      this.dialogueTimer = 3.5;
+    }
+    this.dispatchHUDData();
+    return res;
+  }
+
+  public cancelBuildingPlacement() {
+    if (!this.buildingManager) return;
+    this.buildingManager.cancelPlacing();
+    soundManager.playPopClick();
+    this.dispatchHUDData();
+  }
+
+  public dismantleNearestBuilding() {
+    if (!this.buildingManager) return;
+    const nearest = this.buildingManager.getNearestPlacedBuilding(this.playerPos, 5.0);
+    if (!nearest) {
+      this.dialogueText = 'Nenhuma construção própria por perto para recolher.';
+      this.dialogueTimer = 3.0;
+      return;
+    }
+    const res = this.buildingManager.removeBuilding(nearest.id);
+    if (res.success) {
+      soundManager.playPurchase();
+      this.dialogueText = res.message;
+      this.dialogueTimer = 4.0;
+    }
+    this.dispatchHUDData();
+    return res;
+  }
+
+  public getBuildingManager(): BuildingManager {
+    return this.buildingManager;
   }
 
   private onWindowResize = () => {

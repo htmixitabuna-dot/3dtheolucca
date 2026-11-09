@@ -9,11 +9,18 @@ import {
   ShoppingBag
 } from 'lucide-react';
 import { GameEngine, CityHUDState, BackpackItem } from './simulation/GameEngine';
+import { DEFAULT_CHARACTER_CUSTOMIZATION } from './simulation/TheoLuccaModel';
 import { soundManager } from './simulation/audio';
 import { GtaKidHUD } from './components/GtaKidHUD';
 import { ShopModal, BackpackModal, JobsModal } from './components/CityModals';
+import { CharacterCustomizerModal } from './components/CharacterCustomizerModal';
 import { UnityProjectExplorer } from './components/UnityProjectExplorer';
 import { MixamoGuideModal } from './components/MixamoGuideModal';
+import { EsmeraldaStoreModal } from './components/EsmeraldaStoreModal';
+import { CategorizedInventoryModal } from './components/CategorizedInventoryModal';
+import { AdminPanelModal } from './components/AdminPanelModal';
+import { economyManager } from './simulation/EconomyManager';
+import { InventoryItem, StoreProduct } from './types/economy';
 
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement>(null);
@@ -27,7 +34,11 @@ export default function App() {
   const [showShopModal, setShowShopModal] = useState(false);
   const [showBackpackModal, setShowBackpackModal] = useState(false);
   const [showJobsModal, setShowJobsModal] = useState(false);
+  const [showCustomizerModal, setShowCustomizerModal] = useState(false);
   const [showMixamoGuide, setShowMixamoGuide] = useState(false);
+  const [showEsmeraldaStoreModal, setShowEsmeraldaStoreModal] = useState(false);
+  const [showCategorizedInventoryModal, setShowCategorizedInventoryModal] = useState(false);
+  const [showAdminPanelModal, setShowAdminPanelModal] = useState(false);
   const [victoryMission, setVictoryMission] = useState<{ title: string; reward: number } | null>(null);
 
   // Estado da HUD da Cidade (Com R$ 3.00 inicial e Missão 1)
@@ -72,6 +83,13 @@ export default function App() {
     allMotos: [],
     expansionAnnouncement: null,
     performanceMode: 'light',
+    characterCustomization: DEFAULT_CHARACTER_CUSTOMIZATION,
+    characterName: 'Theo Lucca',
+    wallet: economyManager.getWallet(),
+    isBuildModeActive: false,
+    buildModeItem: null,
+    isBuildPlacementValid: false,
+    nearestPlacedBuildingName: null,
   });
 
   // Inicialização do GameEngine Three.js
@@ -249,6 +267,53 @@ export default function App() {
     gameEngineRef.current?.togglePerformanceMode();
   };
 
+  const handleStartBuildingPlacement = (item: InventoryItem) => {
+    setShowCategorizedInventoryModal(false);
+    gameEngineRef.current?.startBuildingPlacement(item);
+  };
+
+  const handleEquipCustomization = (customizationData: any) => {
+    const updated = {
+      ...hudState.characterCustomization,
+      ...customizationData,
+    };
+    gameEngineRef.current?.updateCharacterCustomization(updated);
+    setHudState((prev) => ({
+      ...prev,
+      characterCustomization: updated,
+    }));
+    confetti({
+      particleCount: 50,
+      spread: 60,
+      origin: { y: 0.6 },
+      colors: ['#38bdf8', '#fbbf24', '#22c55e', '#a855f7'],
+    });
+  };
+
+  const handleRotateBuildPlacement = () => {
+    gameEngineRef.current?.rotateBuildingPreview();
+  };
+
+  const handleConfirmBuildPlacement = () => {
+    const res = gameEngineRef.current?.confirmBuildingPlacement();
+    if (res?.success) {
+      confetti({
+        particleCount: 65,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#22c55e', '#10b981', '#38bdf8', '#fbbf24'],
+      });
+    }
+  };
+
+  const handleCancelBuildPlacement = () => {
+    gameEngineRef.current?.cancelBuildingPlacement();
+  };
+
+  const handleDismantleNearest = () => {
+    gameEngineRef.current?.dismantleNearestBuilding();
+  };
+
   return (
     <div className="relative w-screen h-screen bg-slate-950 overflow-hidden select-none flex flex-col font-sans">
       
@@ -286,6 +351,14 @@ export default function App() {
             onSwitchPhase={(phase) => gameEngineRef.current?.switchPhase(phase)}
             onActivateLightTube={() => gameEngineRef.current?.activateLightTube()}
             onSetGPSDestination={(x, z, name) => gameEngineRef.current?.setGPSDestination(x, z, name)}
+            onOpenCustomizer={() => setShowCustomizerModal(true)}
+            onOpenEsmeraldaStore={() => setShowEsmeraldaStoreModal(true)}
+            onOpenInventory={() => setShowCategorizedInventoryModal(true)}
+            onOpenAdminPanel={() => setShowAdminPanelModal(true)}
+            onRotateBuildPlacement={handleRotateBuildPlacement}
+            onConfirmBuildPlacement={handleConfirmBuildPlacement}
+            onCancelBuildPlacement={handleCancelBuildPlacement}
+            onDismantleNearestBuilding={handleDismantleNearest}
           />
         )}
 
@@ -322,6 +395,25 @@ export default function App() {
         isOpen={showJobsModal}
         onClose={() => setShowJobsModal(false)}
         onSelectJob={handleSelectJob}
+      />
+
+      {/* MODAL DE PERSONALIZAÇÃO DO PERSONAGEM (NOME, ROUPAS, BONÉ, SAPATOS, MOCHILA, CABELO) */}
+      <CharacterCustomizerModal
+        isOpen={showCustomizerModal}
+        customization={hudState.characterCustomization}
+        onClose={() => setShowCustomizerModal(false)}
+        onSave={(newCustom) => {
+          gameEngineRef.current?.updateCharacterCustomization(newCustom);
+          confetti({
+            particleCount: 85,
+            spread: 75,
+            origin: { y: 0.6 },
+            colors: ['#38bdf8', '#fbbf24', '#22c55e', '#ef4444', '#a855f7'],
+          });
+        }}
+        onLiveChange={(newCustom) => {
+          gameEngineRef.current?.updateCharacterCustomization(newCustom);
+        }}
       />
 
       {/* MODAL DE MISSÃO PRINCIPAL CONCLUÍDA */}
@@ -388,6 +480,47 @@ export default function App() {
       <MixamoGuideModal
         isOpen={showMixamoGuide}
         onClose={() => setShowMixamoGuide(false)}
+      />
+
+      {/* LOJA OFICIAL ESMERALDA STORE (6 CATEGORIAS, PREÇOS EM OURO, DIAMANTES OU ESMERALDAS) */}
+      <EsmeraldaStoreModal
+        isOpen={showEsmeraldaStoreModal}
+        wallet={hudState.wallet}
+        currentLevel={hudState.cityExpansionLevel}
+        playerName={hudState.characterName || 'InhoBahia'}
+        characterCustomization={hudState.characterCustomization}
+        onEquipCustomization={handleEquipCustomization}
+        onClose={() => setShowEsmeraldaStoreModal(false)}
+        onItemPurchased={(_product: StoreProduct) => {
+          confetti({
+            particleCount: 65,
+            spread: 70,
+            origin: { y: 0.7 },
+            colors: ['#10b981', '#34d399', '#fbbf24', '#38bdf8'],
+          });
+        }}
+      />
+
+      {/* INVENTÁRIO CATEGORIZADO (ROUPAS, CONSTRUÇÕES, VEÍCULOS, UTILITÁRIOS, DECORAÇÕES) */}
+      <CategorizedInventoryModal
+        isOpen={showCategorizedInventoryModal}
+        onClose={() => setShowCategorizedInventoryModal(false)}
+        onEquipCustomization={handleEquipCustomization}
+        onStartBuildingPlacement={handleStartBuildingPlacement}
+      />
+
+      {/* PAINEL ADMINISTRATIVO PROTEGIDO POR PIN 1234 (CATÁLOGO, PACOTES, AUDITORIA, CARTEIRAS) */}
+      <AdminPanelModal
+        isOpen={showAdminPanelModal}
+        wallet={hudState.wallet}
+        onClose={() => setShowAdminPanelModal(false)}
+        onWalletUpdated={(newW) => {
+          setHudState((prev) => ({
+            ...prev,
+            wallet: newW,
+            money: newW.gold,
+          }));
+        }}
       />
 
     </div>
