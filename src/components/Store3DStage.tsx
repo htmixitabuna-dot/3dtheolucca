@@ -386,21 +386,46 @@ export const Store3DStage: React.FC<Store3DStageProps> = ({
       }
 
       // Se for construção: coloca a maquete 3D da casa ao lado do avatar
-      if (selectedProduct.category === 'construcao' || selectedProduct.modelType === 'house_modern') {
-        const houseMesh = createBuildingMesh('house_modern', false, true);
-        houseMesh.scale.setScalar(0.22);
-        houseMesh.position.set(0.75, 0.18, -0.2);
-        houseMesh.rotation.y = -Math.PI / 6;
-        extraPropGroupRef.current.add(houseMesh);
+      if (selectedProduct.category === 'construcao') {
+        const bldType = selectedProduct.modelType || 'house_modern';
+        const bldMesh = createBuildingMesh(bldType, false, true);
+        bldMesh.scale.setScalar(0.22);
+        bldMesh.position.set(0.75, 0.18, -0.2);
+        bldMesh.rotation.y = -Math.PI / 6;
+        extraPropGroupRef.current.add(bldMesh);
         rig.root.position.set(-0.45, 0.18, 0.1);
+      } else if (selectedProduct.category === 'decoracao') {
+        // Se for decoração: mostra árvore, poste, banco ou chafariz
+        const decType = selectedProduct.modelType || 'tree_ornamental';
+        const decMesh = createBuildingMesh(decType, false, true);
+        decMesh.scale.setScalar(0.32);
+        decMesh.position.set(0.65, 0.18, -0.1);
+        extraPropGroupRef.current.add(decMesh);
+        rig.root.position.set(-0.4, 0.18, 0.1);
       } else if (selectedProduct.category === 'garagem') {
-        // Se for veículo (Carro Esportivo ou Moto): renderiza miniatura esportiva ao lado do avatar
+        // Se for veículo (Carro Esportivo, Moto, Picape ou Fusca)
         const carGroup = new THREE.Group();
         const isMoto = selectedProduct.id.includes('moto');
         
+        let vehicleColor = 0xdc2626;
+        let isGold = false;
+        if (selectedProduct.id.includes('blue')) vehicleColor = 0x2563eb;
+        else if (selectedProduct.id.includes('black')) vehicleColor = 0x09090b;
+        else if (selectedProduct.id.includes('green') || selectedProduct.id.includes('ninja')) vehicleColor = 0x16a34a;
+        else if (selectedProduct.id.includes('yellow') || selectedProduct.id.includes('amarelo')) vehicleColor = 0xfacc15;
+        else if (selectedProduct.id.includes('orange') || selectedProduct.id.includes('picape')) vehicleColor = 0xf97316;
+        else if (selectedProduct.id.includes('gold') || selectedProduct.id.includes('ouro')) {
+          vehicleColor = 0xfbbf24;
+          isGold = true;
+        }
+
         if (isMoto) {
-          // Moto Street
-          const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.8, roughness: 0.2 });
+          // Moto Street / Ninja
+          const bodyMat = new THREE.MeshStandardMaterial({ 
+            color: vehicleColor, 
+            metalness: isGold ? 0.95 : 0.8, 
+            roughness: isGold ? 0.15 : 0.25 
+          });
           const motoFrame = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.1), bodyMat);
           motoFrame.position.y = 0.35;
           carGroup.add(motoFrame);
@@ -415,18 +440,23 @@ export const Store3DStage: React.FC<Store3DStageProps> = ({
           rWheel.position.set(0, 0.2, -0.45);
           carGroup.add(rWheel);
         } else {
-          // Carro Esportivo V12
-          const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.75, roughness: 0.25 });
-          const carBody = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.35, 1.6), bodyMat);
-          carBody.position.y = 0.26;
+          // Carro Esportivo V12 / Picape / Fusca
+          const bodyMat = new THREE.MeshStandardMaterial({ 
+            color: vehicleColor, 
+            metalness: isGold ? 0.95 : 0.75, 
+            roughness: isGold ? 0.15 : 0.25 
+          });
+          const isPicape = selectedProduct.id.includes('picape');
+          const carBody = new THREE.Mesh(new THREE.BoxGeometry(0.85, isPicape ? 0.45 : 0.35, 1.6), bodyMat);
+          carBody.position.y = isPicape ? 0.32 : 0.26;
           carGroup.add(carBody);
 
           const cabinMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.1 });
-          const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.8), cabinMat);
-          cabin.position.set(0, 0.48, -0.1);
+          const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, isPicape ? 0.6 : 0.8), cabinMat);
+          cabin.position.set(0, isPicape ? 0.58 : 0.48, isPicape ? 0.1 : -0.1);
           carGroup.add(cabin);
 
-          // Rodas pretas esportivas
+          // Rodas esportivas
           const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
           [
             [-0.45, 0.15, 0.45],

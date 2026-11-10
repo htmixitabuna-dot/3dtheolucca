@@ -21,6 +21,7 @@ import { CharacterCustomization, DEFAULT_CHARACTER_CUSTOMIZATION } from '../simu
 import { economyManager } from '../simulation/EconomyManager';
 import { soundManager } from '../simulation/audio';
 import { Store3DStage } from './Store3DStage';
+import { downloadGodot4Project } from '../utils/exportGodotProject';
 
 export interface EsmeraldaStoreModalProps {
   isOpen: boolean;
@@ -281,6 +282,26 @@ export const EsmeraldaStoreModal: React.FC<EsmeraldaStoreModalProps> = ({
             title="Configurações da Loja"
           >
             <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+
+          {/* Exportar Projeto Completo Godot Engine 4 (.zip) */}
+          <button 
+            onClick={async () => {
+              setFeedbackMessage({ text: 'Iniciando download do Projeto Completo Godot Engine 4.3 (.zip)...' });
+              try {
+                await downloadGodot4Project();
+                setFeedbackMessage({ text: 'Projeto Godot 4 (.zip) gerado e baixado com sucesso!' });
+                setTimeout(() => setFeedbackMessage(null), 4500);
+              } catch {
+                setFeedbackMessage({ text: 'Erro ao gerar arquivo zip do Godot 4.', isError: true });
+                setTimeout(() => setFeedbackMessage(null), 3000);
+              }
+            }}
+            className="px-2 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-purple-500 border border-sky-400/80 text-white flex items-center gap-1.5 shadow-[0_0_15px_rgba(56,189,248,0.5)] transition active:scale-95 text-xs font-mono font-bold"
+            title="Baixar Projeto Completo Godot 4 (.zip)"
+          >
+            <span className="text-sm">🎮</span>
+            <span className="hidden sm:inline">Exportar Godot 4</span>
           </button>
 
           {/* BOTÃO FECHAR VERMELHO COM BRILHO NEON */}

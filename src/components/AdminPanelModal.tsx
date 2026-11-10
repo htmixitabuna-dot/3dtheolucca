@@ -17,6 +17,7 @@ import {
 import { StoreProduct, StoreCategory, CurrencyType, AdminPackage, PlayerWallet } from '../types/economy';
 import { economyManager } from '../simulation/EconomyManager';
 import { soundManager } from '../simulation/audio';
+import { downloadGodot4Project } from '../utils/exportGodotProject';
 
 export interface AdminPanelModalProps {
   isOpen: boolean;
@@ -35,7 +36,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'products' | 'packages' | 'history' | 'wallet'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'packages' | 'history' | 'wallet' | 'godot'>('products');
   const [productsList, setProductsList] = useState<StoreProduct[]>(() => economyManager.getProducts());
   const [packagesList, setPackagesList] = useState<AdminPackage[]>(() => economyManager.getPackages());
   const [transactionsList, setTransactionsList] = useState(() => economyManager.getTransactions());
@@ -204,6 +205,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               >
                 <UserCheck className="w-3.5 h-3.5" />
                 <span>Gestão do Jogador</span>
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('godot'); setEditingProduct(null); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                  activeTab === 'godot' ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow font-black' : 'text-sky-400 hover:text-sky-300'
+                }`}
+              >
+                <span>🎮</span>
+                <span>Exportar Godot 4</span>
               </button>
             </div>
 
@@ -562,6 +573,72 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                         +25 Esmeraldas ❇️
                       </button>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ABA 5: PROJETO GODOT ENGINE 4 */}
+              {activeTab === 'godot' && (
+                <div className="space-y-4 animate-fade-in p-2">
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-950 via-indigo-950 to-slate-950 border border-sky-400/50 shadow-lg flex items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">🎮</span>
+                        <h4 className="text-base font-black text-white font-['Rajdhani'] uppercase tracking-wider">
+                          Projeto Oficial Godot Engine 4.3
+                        </h4>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        Código completo convertido em <strong>GDScript</strong> e nós nativos do Godot 4 (CharacterBody3D, SpringArm3D, Sistema de Economia, Esmeralda Store e Mundo 3D).
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        try {
+                          await downloadGodot4Project();
+                          soundManager.playStarCollect();
+                        } catch {
+                          alert('Erro ao exportar projeto.');
+                        }
+                      }}
+                      className="px-5 py-3 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-500 hover:brightness-110 text-white font-black text-xs font-mono uppercase tracking-wider shadow-[0_0_20px_rgba(56,189,248,0.5)] active:scale-95 transition flex items-center gap-2 flex-shrink-0"
+                    >
+                      <span>📥</span>
+                      <span>Baixar Projeto (.zip)</span>
+                    </button>
+                  </div>
+
+                  {/* Resumo da Estrutura */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                      <h5 className="text-xs font-black text-amber-300 font-mono flex items-center gap-1.5">
+                        <span>🕹️</span> Personagem (TheoLuccaPlayer)
+                      </h5>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        CharacterBody3D com gravidade, pulo, corrida (Sprint), câmera orbital de terceira pessoa com SpringArm3D e animações procedurais de membros.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                      <h5 className="text-xs font-black text-emerald-300 font-mono flex items-center gap-1.5">
+                        <span>💰</span> Economia & Store
+                      </h5>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        Autoload em GDScript com saldos de Ouro, Diamantes e Esmeraldas, persistência em JSON (user://), histórico e loja Esmeralda Store estilo Free Fire.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Guia Rápido de Execução */}
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <span className="font-bold text-white block">Como abrir no Godot:</span>
+                    <ol className="list-decimal pl-4 space-y-1 text-slate-400">
+                      <li>Baixe e extraia o arquivo <code className="text-sky-300">TheoLucca_CidadeReal_Godot4_Project.zip</code></li>
+                      <li>Abra o Godot 4.3 e clique em <strong>Import</strong></li>
+                      <li>Selecione o arquivo <code className="text-sky-300">project.godot</code> na pasta extraída</li>
+                      <li>Pressione <strong>F5</strong> para rodar o jogo imediatamente!</li>
+                    </ol>
                   </div>
                 </div>
               )}
