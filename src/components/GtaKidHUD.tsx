@@ -44,6 +44,12 @@ export interface GtaKidHUDProps {
   onTurnRight: () => void;
   onCameraZoomIn?: () => void;
   onCameraZoomOut?: () => void;
+  onToggleAerialView?: () => void;
+  onSetCameraPreset?: (preset: 'city' | 'district' | 'street' | 'third_person') => void;
+  onSetCameraZoom?: (zoom: number) => void;
+  onCameraPan?: (dx: number, dy: number) => void;
+  onResetCameraPan?: () => void;
+  onResetCamera?: () => void;
   onOpenUnityCode: () => void;
   onOpenBackpack: () => void;
   onOpenJobsModal: () => void;
@@ -64,6 +70,7 @@ export interface GtaKidHUDProps {
   onOpenLoginScreen?: () => void;
   onToggleDayNight?: () => void;
   onToggleWeather?: () => void;
+  onSetDayCycleDuration?: (seconds: number) => void;
 }
 
 export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
@@ -82,6 +89,11 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   onTurnRight,
   onCameraZoomIn,
   onCameraZoomOut,
+  onSetCameraPreset,
+  onSetCameraZoom,
+  onCameraPan,
+  onResetCameraPan,
+  onResetCamera,
   onOpenUnityCode,
   onOpenBackpack,
   onOpenJobsModal,
@@ -101,11 +113,13 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   onOpenLoginScreen,
   onToggleDayNight,
   onToggleWeather,
+  onSetDayCycleDuration,
 }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [touchSensitivity, setTouchSensitivity] = useState(1.4);
   const [invertTouch, setInvertTouch] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [cameraDragMode, setCameraDragMode] = useState<'rotate' | 'pan'>('pan');
 
   // Joystick touch tracking (suporta multi-touch simultâneo no Android sem conflito com câmera)
   const [joystickActive, setJoystickActive] = useState(false);
@@ -113,7 +127,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   const joystickRef = useRef<HTMLDivElement>(null);
   const joystickTouchIdRef = useRef<number | null>(null);
 
-  // Camera multi-touch rotation
+  // Camera multi-touch rotation & pan
   const cameraTouchRef = useRef<{
     id: number | null;
     startX: number;
@@ -124,7 +138,21 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   }>({ id: null, startX: 0, startY: 0, lastX: 0, lastY: 0, startTime: 0 });
 
   const isMouseDownRef = useRef(false);
+  const isMousePanDragRef = useRef(false);
   const mouseLastRef = useRef({ x: 0, y: 0 });
+  const pinchZoomRef = useRef<{
+    active: boolean;
+    startDist: number;
+    startZoom: number;
+    lastMidX: number;
+    lastMidY: number;
+  }>({
+    active: false,
+    startDist: 0,
+    startZoom: 1.0,
+    lastMidX: 0,
+    lastMidY: 0,
+  });
 
   const handleJoystickStart = (clientX: number, clientY: number) => {
     if (!joystickRef.current) return;
@@ -161,8 +189,21 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
     onJoystickMove(0, 0);
   };
 
-  // Full-screen screen touch rotation
+  // Full-screen screen touch rotation / pan + two-finger pinch zoom & drag (para mover em todos os sentidos no Android)
   const handleScreenTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchZoomRef.current = {
+        active: true,
+        startDist: Math.max(10, Math.hypot(dx, dy)),
+        startZoom: hudState.cameraZoom ?? 96.0,
+        lastMidX: (e.touches[0].clientX + e.touches[1].clientX) * 0.5,
+        lastMidY: (e.touches[0].clientY + e.touches[1].clientY) * 0.5,
+      };
+      cameraTouchRef.current.id = null;
+      return;
+    }
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
       const inJoystick = touch.clientX < window.innerWidth * 0.4 && touch.clientY > window.innerHeight * 0.6;
@@ -181,15 +222,39 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   };
 
   const handleScreenTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchZoomRef.current.active) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 8 && onSetCameraZoom) {
+        const ratio = pinchZoomRef.current.startDist / dist;
+        onSetCameraZoom(pinchZoomRef.current.startZoom * ratio);
+      }
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+      if (onCameraPan) {
+        onCameraPan(
+          (midX - pinchZoomRef.current.lastMidX) * touchSensitivity,
+          (midY - pinchZoomRef.current.lastMidY) * touchSensitivity
+        );
+      }
+      pinchZoomRef.current.lastMidX = midX;
+      pinchZoomRef.current.lastMidY = midY;
+      return;
+    }
     if (cameraTouchRef.current.id === null) return;
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
       if (touch.identifier === cameraTouchRef.current.id) {
         let dx = touch.clientX - cameraTouchRef.current.lastX;
         let dy = touch.clientY - cameraTouchRef.current.lastY;
-        if (invertTouch) dx = -dx;
 
-        onCameraRotate(dx * touchSensitivity, dy * touchSensitivity);
+        if (cameraDragMode === 'pan' && onCameraPan) {
+          onCameraPan(dx * touchSensitivity, dy * touchSensitivity);
+        } else {
+          if (invertTouch) dx = -dx;
+          onCameraRotate(dx * touchSensitivity, dy * touchSensitivity);
+        }
         cameraTouchRef.current.lastX = touch.clientX;
         cameraTouchRef.current.lastY = touch.clientY;
         break;
@@ -198,6 +263,9 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   };
 
   const handleScreenTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      pinchZoomRef.current.active = false;
+    }
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
       if (touch.identifier === cameraTouchRef.current.id) {
@@ -207,7 +275,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
         );
         const duration = Date.now() - cameraTouchRef.current.startTime;
 
-        if (totalDist < 12 && duration < 300) {
+        if (totalDist < 12 && duration < 300 && cameraDragMode === 'rotate') {
           if (touch.clientX > window.innerWidth * 0.5) {
             onTurnRight();
           } else {
@@ -222,6 +290,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     isMouseDownRef.current = true;
+    isMousePanDragRef.current = e.button === 2 || e.button === 1 || e.shiftKey || cameraDragMode === 'pan';
     mouseLastRef.current = { x: e.clientX, y: e.clientY };
   };
 
@@ -229,13 +298,18 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
     if (!isMouseDownRef.current) return;
     let dx = e.clientX - mouseLastRef.current.x;
     let dy = e.clientY - mouseLastRef.current.y;
-    if (invertTouch) dx = -dx;
-    onCameraRotate(dx * touchSensitivity, dy * touchSensitivity);
+    if (isMousePanDragRef.current && onCameraPan) {
+      onCameraPan(dx * touchSensitivity, dy * touchSensitivity);
+    } else {
+      if (invertTouch) dx = -dx;
+      onCameraRotate(dx * touchSensitivity, dy * touchSensitivity);
+    }
     mouseLastRef.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleMouseUp = () => {
     isMouseDownRef.current = false;
+    isMousePanDragRef.current = false;
   };
 
   const handleScreenWheel = (e: React.WheelEvent) => {
@@ -254,7 +328,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   return (
     <div className="absolute inset-0 select-none overflow-hidden font-sans pointer-events-none">
       
-      {/* SUPERFÍCIE DE TOQUE EM TELA CHEIA PARA GIRAR E DAR ZOOM NA CÂMERA */}
+      {/* SUPERFÍCIE DE TOQUE EM TELA CHEIA PARA GIRAR, MOVER E DAR ZOOM NA CÂMERA */}
       <div 
         className="absolute inset-0 z-0 pointer-events-auto touch-none cursor-grab active:cursor-grabbing"
         onTouchStart={handleScreenTouchStart}
@@ -265,6 +339,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onContextMenu={(e) => e.preventDefault()}
         onWheel={handleScreenWheel}
       />
 
@@ -583,8 +658,47 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
       {/* =========================================================================
           CANTO INFERIOR ESQUERDO: JOYSTICK ANALÓGICO + BOTÕES DE GIRO RÁPIDO
          ========================================================================= */}
-      <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 pointer-events-auto flex flex-col items-center gap-1 z-20 origin-bottom-left scale-[0.82] min-[400px]:scale-90 sm:scale-100">
-        <div className="flex items-center gap-1 sm:gap-1.5">
+      <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 pointer-events-auto flex flex-col items-start gap-1 z-20 origin-bottom-left scale-[0.82] min-[400px]:scale-90 sm:scale-100">
+        {onSetCameraPreset && (
+          <div className="flex flex-wrap items-center gap-1 max-w-[245px] sm:max-w-none">
+            {[
+              { id: 'city' as const, label: '🗺️ CIDADE INTEIRA', pan: true },
+              { id: 'district' as const, label: '🏘️ BAIRRO', pan: true },
+              { id: 'street' as const, label: '🛣️ RUA', pan: false },
+              { id: 'third_person' as const, label: '🚶 3ª PESSOA', pan: false },
+            ].map((preset) => {
+              const currentPreset =
+                hudState.cameraPreset ||
+                ((hudState.cameraZoom ?? 96) >= 52
+                  ? 'city'
+                  : (hudState.cameraZoom ?? 96) >= 14
+                    ? 'district'
+                    : (hudState.cameraZoom ?? 96) >= 2.6
+                      ? 'street'
+                      : 'third_person');
+              const isActive = currentPreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  onClick={() => {
+                    setCameraDragMode(preset.pan ? 'pan' : 'rotate');
+                    onSetCameraPreset(preset.id);
+                  }}
+                  className={`px-1.5 py-0.5 rounded-md border active:scale-95 text-[8.5px] sm:text-[9.5px] font-mono font-black flex items-center gap-0.5 shadow transition whitespace-nowrap ${
+                    isActive
+                      ? 'bg-amber-400 border-white text-slate-950'
+                      : 'bg-slate-950/90 border-slate-600 hover:border-amber-400 text-slate-100'
+                  }`}
+                  title={`Modo de Câmera: ${preset.label}`}
+                >
+                  <span>{preset.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-1 max-w-[235px] sm:max-w-none">
           <button
             onClick={onTurnLeft}
             className="px-2 py-0.5 rounded-md bg-slate-950/85 border border-slate-700 hover:border-amber-400 active:scale-95 text-slate-200 text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-0.5 shadow transition"
@@ -603,7 +717,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
             <button
               onClick={onCameraZoomIn}
               className="px-1.5 py-0.5 rounded-md bg-slate-950/85 border border-slate-700 hover:border-sky-400 active:scale-95 text-sky-300 text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-0.5 shadow transition"
-              title="Aproximar Câmera (Zoom In / Roda do Mouse)"
+              title="Aproximar Câmera (Zoom In)"
             >
               <span>+ ZOOM</span>
             </button>
@@ -612,9 +726,47 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
             <button
               onClick={onCameraZoomOut}
               className="px-1.5 py-0.5 rounded-md bg-slate-950/85 border border-slate-700 hover:border-sky-400 active:scale-95 text-sky-300 text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-0.5 shadow transition"
-              title="Afastar Câmera (Zoom Out / Roda do Mouse)"
+              title="Afastar Câmera até ver a cidade inteira (Zoom Out)"
             >
               <span>- ZOOM</span>
+            </button>
+          )}
+          {onResetCamera && (
+            <button
+              onClick={() => {
+                setCameraDragMode('rotate');
+                onResetCamera();
+              }}
+              className={`px-2 py-0.5 rounded-md border active:scale-95 text-[9px] sm:text-[10px] font-mono font-black flex items-center gap-0.5 shadow transition whitespace-nowrap ${
+                Math.abs((hudState.cameraZoom ?? 1.1) - 1.1) > 0.35 || hudState.isCameraPanned
+                  ? 'bg-emerald-500 border-white text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.75)]'
+                  : 'bg-slate-950/85 border-slate-600 hover:border-emerald-400 text-emerald-300'
+              }`}
+              title="Voltar câmera ao normal seguindo Theo Lucca [R]"
+            >
+              <span>📷 NORMAL</span>
+            </button>
+          )}
+          {onCameraPan && (
+            <button
+              onClick={() => setCameraDragMode((m) => (m === 'pan' ? 'rotate' : 'pan'))}
+              className={`px-1.5 py-0.5 rounded-md border active:scale-95 text-[9px] sm:text-[10px] font-mono font-black flex items-center gap-0.5 shadow transition ${
+                cameraDragMode === 'pan'
+                  ? 'bg-sky-500 border-white text-slate-950'
+                  : 'bg-slate-950/85 border-slate-600 hover:border-sky-400 text-slate-200'
+              }`}
+              title="Alternar arrasto entre Mover câmera pelo mapa em todos os sentidos ou Girar 360°"
+            >
+              <span>{cameraDragMode === 'pan' ? '✋ MOVER' : '🔄 GIRAR'}</span>
+            </button>
+          )}
+          {hudState.isCameraPanned && onResetCameraPan && (
+            <button
+              onClick={onResetCameraPan}
+              className="px-1.5 py-0.5 rounded-md bg-rose-600/90 border border-white active:scale-95 text-white text-[9px] sm:text-[10px] font-mono font-black flex items-center gap-0.5 shadow transition"
+              title="Centralizar câmera no Theo Lucca"
+            >
+              <span>🎯 CENTRO</span>
             </button>
           )}
         </div>
@@ -1009,7 +1161,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
             </div>
 
             {/* CONTROLE DO CICLO DIA/NOITE & CLIMA */}
-            {(onToggleDayNight || onToggleWeather) && (
+            {(onToggleDayNight || onToggleWeather || onSetDayCycleDuration) && (
               <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
                 <div className="text-[11px] font-bold text-sky-400 uppercase flex items-center justify-between">
                   <span className="flex items-center gap-1.5 font-['Rajdhani']">
@@ -1038,6 +1190,39 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
                     </button>
                   )}
                 </div>
+                {onSetDayCycleDuration && (
+                  <div className="space-y-1 pt-1">
+                    <div className="flex items-center justify-between text-[10px] text-slate-300 font-semibold">
+                      <span>⏳ Duração completa (Dia + Noite)</span>
+                      <span className="font-mono text-amber-300 font-bold">
+                        {Math.round((hudState.dayCycleDurationSeconds ?? 720) / 60)} min
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {[
+                        { label: '6 min', sec: 360 },
+                        { label: '12 min', sec: 720 },
+                        { label: '20 min', sec: 1200 },
+                        { label: '30 min', sec: 1800 },
+                      ].map((opt) => {
+                        const active = Math.abs((hudState.dayCycleDurationSeconds ?? 720) - opt.sec) < 30;
+                        return (
+                          <button
+                            key={opt.sec}
+                            onClick={() => onSetDayCycleDuration(opt.sec)}
+                            className={`py-1.5 rounded-lg border text-[10px] font-mono font-bold transition ${
+                              active
+                                ? 'bg-amber-500 text-slate-950 border-white shadow font-black'
+                                : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-amber-400'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

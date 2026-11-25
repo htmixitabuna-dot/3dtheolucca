@@ -27,71 +27,136 @@ export interface MapDistrict {
 export const CITY_DISTRICTS: MapDistrict[] = [
   {
     id: 1,
-    name: 'Bairro da Oficina & Praça Central',
-    shortName: 'Centro & Oficina',
-    color: '#38bdf8', // sky-400
+    name: 'Centro (Igreja Matriz, Delegacia & Comércio)',
+    shortName: '1. Centro',
+    color: '#38bdf8',
     unlockedAtMission: 1,
-    bounds: { minX: -50, maxX: 45, minZ: -48, maxZ: 45 },
-    description: 'Oficina Theo Lucca, Pizzaria, Padaria, Mercado e Praça da Fonte!',
+    bounds: { minX: -56, maxX: 56, minZ: -56, maxZ: 56 },
+    description: 'Igreja Matriz, Delegacia, Prefeitura, Banco, Feira Livre, Oficina, Praça e Prédios!',
   },
   {
     id: 2,
-    name: 'Bairro Comercial & Shopping Center',
-    shortName: 'Shopping & Lojas',
-    color: '#a855f7', // purple-500
-    unlockedAtMission: 2,
-    bounds: { minX: 40, maxX: 95, minZ: 0, maxZ: 70 },
-    description: 'Shopping Center, Sorveteria, Praça das Palmeiras e Lojas de Brinquedos!',
+    name: 'Bairro Alto (Igreja Branca, Escola & Creche)',
+    shortName: '2. Bairro Alto',
+    color: '#22c55e',
+    unlockedAtMission: 1,
+    bounds: { minX: -176, maxX: -62, minZ: -118, maxZ: 56 },
+    description: 'Igreja do Bairro Alto, Escola Municipal, Creche Alegria e Casas!',
   },
   {
     id: 3,
-    name: 'Bairro Residencial & Complexo do Personal',
-    shortName: 'Residencial & Academia',
-    color: '#22c55e', // green-500
-    unlockedAtMission: 3,
-    bounds: { minX: -100, maxX: -45, minZ: -30, maxZ: 60 },
-    description: 'Academia ao ar livre do Personal Inho, Quadra Esportiva e Casas dos Vizinhos!',
+    name: 'Bairro Baixo (Igrejinha, Mercadinho & Lan House)',
+    shortName: '3. Bairro Baixo',
+    color: '#f97316',
+    unlockedAtMission: 1,
+    bounds: { minX: -252, maxX: 176, minZ: 102, maxZ: 176 },
+    description: 'Igreja Colorida, Mercadinho, Lan House, Posto de Gasolina e Prédios!',
   },
   {
     id: 4,
-    name: 'Orla Marítima & Calçadão Tropical',
-    shortName: 'Praia & Marina',
-    color: '#06b6d4', // cyan-500
-    unlockedAtMission: 4,
-    bounds: { minX: 65, maxX: 110, minZ: -95, maxZ: 10 },
-    description: 'Píer de barcos, quiosques com coco gelado, areia dourada e lanchas no mar!',
+    name: 'Praia / Orla (Calçadão, Hotel, Parque & Píer)',
+    shortName: '4. Praia / Orla',
+    color: '#06b6d4',
+    unlockedAtMission: 1,
+    bounds: { minX: 184, maxX: 268, minZ: -252, maxZ: 252 },
+    description: 'Areia dourada, Calçadão, Hotel Orla, Quiosques, Píer com Iate e Parque!',
   },
   {
     id: 5,
-    name: 'Grande Metrópole & Torres dos Campeões',
-    shortName: 'Metrópole & Torres',
-    color: '#f59e0b', // amber-500
-    unlockedAtMission: 5,
-    bounds: { minX: -70, maxX: 50, minZ: -105, maxZ: -50 },
-    description: 'Arranha-Céus espelhados, Heliponto, Grande Arco Theo Lucca e Canhões de Luz!',
+    name: 'Bairro Novo (Shopping, Hospital & Bombeiros)',
+    shortName: '5. Bairro Novo',
+    color: '#a855f7',
+    unlockedAtMission: 1,
+    bounds: { minX: -56, maxX: 176, minZ: -248, maxZ: -62 },
+    description: 'Shopping Center, Hospital 24h, Bombeiros, Loja de Carros e Torres!',
+  },
+  {
+    id: 6,
+    name: 'Jardim das Flores (Igreja São Pedro & Biblioteca)',
+    shortName: '6. Jardim Flores',
+    color: '#ec4899',
+    unlockedAtMission: 1,
+    bounds: { minX: -252, maxX: -62, minZ: -248, maxZ: -124 },
+    description: 'Igreja São Pedro, Biblioteca Cultural, Supermercado Oeste e Feira das Flores!',
+  },
+  {
+    id: 7,
+    name: 'Vila Alegre Sul (Capela, Galeria & Estádio)',
+    shortName: '7. Vila Alegre',
+    color: '#eab308',
+    unlockedAtMission: 1,
+    bounds: { minX: -252, maxX: 176, minZ: 182, maxZ: 248 },
+    description: 'Capela da Vila Alegre, Galeria Popular Sul, Estádio e Prédios Residenciais!',
   },
 ];
 
-// Principais Ruas e Avenidas de Cidade Real 3D
+export const CITY_RIVER = {
+  z: 90,
+  width: 16,
+  bridges: [-240, -180, -120, -60, 0, 60, 120, 180],
+};
+
+// Malha Viária Ampliada 3x: 17 Ruas e Avenidas + Calçadão Conectando os 7 Bairros
 export const CITY_ROADS = [
-  // Avenidas Centrais Duplas (X=0 e Z=0)
-  { x1: 0, z1: -105, x2: 0, z2: 65, width: 8, isMain: true, label: 'Av. Central Theo Lucca' },
-  { x1: -95, z1: 0, x2: 80, z2: 0, width: 8, isMain: true, label: 'Av. das Palmeiras' },
-  // Ruas Secundárias de Cruzamento
-  { x1: -45, z1: -85, x2: -45, z2: 55, width: 6, isMain: false, label: 'Rua do Comércio' },
-  { x1: 45, z1: -85, x2: 45, z2: 55, width: 6, isMain: false, label: 'Rua da Oficina' },
-  { x1: -85, z1: -45, x2: 80, z2: -45, width: 6, isMain: false, label: 'Rua Norte' },
-  { x1: -85, z1: 45, x2: 80, z2: 45, width: 6, isMain: false, label: 'Rua Sul' },
-  // Calçadão da Praia
-  { x1: 78, z1: -95, x2: 78, z2: 12, width: 7, isMain: false, label: 'Calçadão da Orla' },
+  { x1: 0, z1: -245, x2: 0, z2: 245, width: 12, isMain: true, label: 'Avenida Central' },
+  { x1: -245, z1: 0, x2: 185, z2: 0, width: 12, isMain: true, label: 'Avenida Principal' },
+  { x1: -60, z1: -245, x2: -60, z2: 245, width: 10, isMain: false, label: 'Rua da Igreja' },
+  { x1: 60, z1: -245, x2: 60, z2: 245, width: 10, isMain: false, label: 'Rua do Shopping' },
+  { x1: -120, z1: -245, x2: -120, z2: 245, width: 9, isMain: false, label: 'Av. Bairro Alto' },
+  { x1: -180, z1: -245, x2: -180, z2: 245, width: 9, isMain: false, label: 'Rua Jardim das Flores' },
+  { x1: -240, z1: -245, x2: -240, z2: 245, width: 9, isMain: false, label: 'Av. Oeste' },
+  { x1: 120, z1: -245, x2: 120, z2: 245, width: 9, isMain: false, label: 'Av. dos Hotéis' },
+  { x1: 180, z1: -245, x2: 180, z2: 245, width: 9, isMain: false, label: 'Rua da Praia' },
+  { x1: -245, z1: -240, x2: 185, z2: -240, width: 9, isMain: false, label: 'Av. Norte' },
+  { x1: -245, z1: -180, x2: 185, z2: -180, width: 9, isMain: false, label: 'Av. dos Condomínios' },
+  { x1: -245, z1: -120, x2: 185, z2: -120, width: 9, isMain: false, label: 'Av. Bairro Novo' },
+  { x1: -245, z1: -60, x2: 185, z2: -60, width: 9, isMain: false, label: 'Av. das Torres' },
+  { x1: -245, z1: 60, x2: 185, z2: 60, width: 9, isMain: false, label: 'Av. do Parque' },
+  { x1: -245, z1: 120, x2: 185, z2: 120, width: 9, isMain: false, label: 'Av. Beira-Rio' },
+  { x1: -245, z1: 180, x2: 185, z2: 180, width: 9, isMain: false, label: 'Av. Vila Alegre' },
+  { x1: -245, z1: 240, x2: 185, z2: 240, width: 9, isMain: false, label: 'Av. Sul' },
+  { x1: 191.5, z1: -252, x2: 191.5, z2: 252, width: 7, isMain: false, label: 'Calçadão da Orla' },
 ];
+
+export function getLocationIconInfo(loc: { id: string; name: string; category: string }): {
+  emoji: string;
+  color: string;
+  priority: number;
+} {
+  const id = (loc.id || '').toLowerCase();
+  const name = (loc.name || '').toLowerCase();
+  if (id.includes('igreja') || name.includes('igreja') || name.includes('capela')) {
+    return { emoji: '⛪', color: '#fde047', priority: 10 };
+  }
+  if (id.includes('shopping') || id.includes('galeria') || name.includes('shopping')) {
+    return { emoji: '🛍️', color: '#c084fc', priority: 10 };
+  }
+  if (id.includes('delegacia') || name.includes('delegacia')) return { emoji: '🚓', color: '#3b82f6', priority: 10 };
+  if (id.includes('supermercado') || id.includes('mercadinho') || name.includes('mercado')) {
+    return { emoji: '🛒', color: '#22c55e', priority: 10 };
+  }
+  if (id.includes('hospital') || name.includes('hospital')) return { emoji: '🏥', color: '#ef4444', priority: 10 };
+  if (id.includes('escola') || id.includes('creche') || name.includes('escola')) {
+    return { emoji: '🏫', color: '#38bdf8', priority: 10 };
+  }
+  if (id.includes('bombeiros') || name.includes('bombeiros')) return { emoji: '🚒', color: '#ef4444', priority: 9 };
+  if (id.includes('biblioteca') || name.includes('biblioteca')) return { emoji: '📚', color: '#f59e0b', priority: 9 };
+  if (id.includes('hotel') || name.includes('hotel')) return { emoji: '🏨', color: '#38bdf8', priority: 8 };
+  if (id.includes('posto') || name.includes('posto')) return { emoji: '⛽', color: '#f97316', priority: 7 };
+  if (id.includes('oficina') || name.includes('oficina')) return { emoji: '🔧', color: '#facc15', priority: 7 };
+  if (id.includes('prefeitura') || id.includes('banco')) return { emoji: '🏛️', color: '#94a3b8', priority: 6 };
+  if (id.includes('pizzaria') || id.includes('padaria') || id.includes('lanchonete')) {
+    return { emoji: '🍕', color: '#fb923c', priority: 5 };
+  }
+  return { emoji: '📍', color: '#38bdf8', priority: 3 };
+}
 
 export interface NavigationMiniMapProps {
   playerX: number;
   playerZ: number;
   playerRotation: number;
   targetPos: { x: number; z: number; name?: string } | null;
-  expansionLevel: number; // 1 a 5
+  expansionLevel: number; // 1 a 7
   locations: { id: string; name: string; category: string; x: number; z: number }[];
   npcs: { name: string; role: string; gender: 'male' | 'female'; x: number; z: number }[];
   cars: { x: number; z: number; colorName: string }[];
@@ -117,11 +182,11 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
   const [selectedDistrict, setSelectedDistrict] = useState<MapDistrict | null>(null);
   const [zoomLevel, setZoomLevel] = useState<'city' | 'local'>('city');
 
-  // Limites da Cidade no Mapa (Área Jogável Ativa)
-  const minX = -105;
-  const maxX = 105;
-  const minZ = -105;
-  const maxZ = 65;
+  // Limites da Cidade 3x no Mapa (7 Bairros + Rio + Praia/Orla)
+  const minX = -265;
+  const maxX = 275;
+  const minZ = -265;
+  const maxZ = 265;
 
   // Projeção das Coordenadas do Mundo para o Mini-mapa SVG (0 a 100%)
   const worldToMap = (wx: number, wz: number, isZoomLocal = false) => {
@@ -197,12 +262,22 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
 
             {/* Mar / Oceano Leste */}
             <rect
-              x={worldToMap(78, -105, isLocal).x}
+              x={worldToMap(196, -260, isLocal).x}
               y="0"
-              width="25"
+              width="30"
               height="100"
               fill="#0284c7"
-              fillOpacity={expansionLevel >= 4 ? 0.35 : 0.15}
+              fillOpacity={0.38}
+            />
+            {/* Rio Azul */}
+            <line
+              x1={worldToMap(-260, CITY_RIVER.z, isLocal).x}
+              y1={worldToMap(-260, CITY_RIVER.z, isLocal).y}
+              x2={worldToMap(196, CITY_RIVER.z, isLocal).x}
+              y2={worldToMap(196, CITY_RIVER.z, isLocal).y}
+              stroke="#0ea5e9"
+              strokeWidth="3.5"
+              strokeOpacity="0.65"
             />
 
             {/* 1. Bairros e Setores Desbloqueados da Cidade */}
@@ -281,20 +356,21 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
               );
             })}
 
-            {/* 3. Lojas e Locais Importantes (Blips com Letras Estilo GTA) */}
-            {locations.slice(0, 10).map((loc) => {
+            {/* 3. Locais Importantes com Ícones */}
+            {locations.map((loc) => {
               const pos = worldToMap(loc.x, loc.z, isLocal);
+              const iconInfo = getLocationIconInfo(loc);
+              if (iconInfo.priority < 9) return null;
               return (
-                <g key={loc.id}>
-                  <circle
-                    cx={pos.x}
-                    cy={pos.y}
-                    r="2.4"
-                    fill="#0284c7"
-                    stroke="#ffffff"
-                    strokeWidth="0.7"
-                  />
-                </g>
+                <text
+                  key={loc.id}
+                  x={pos.x}
+                  y={pos.y + 1.5}
+                  fontSize="5.2"
+                  textAnchor="middle"
+                >
+                  {iconInfo.emoji}
+                </text>
               );
             })}
 
@@ -419,7 +495,7 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
 
           {/* BADGE DE NÍVEL DE EXPANSÃO */}
           <div className="absolute bottom-1.5 right-2 px-1.5 py-0.5 rounded-md bg-slate-900/90 border border-slate-700 text-[8px] font-mono text-emerald-400 font-bold flex items-center gap-0.5 pointer-events-none shadow">
-            <span>EXP {expansionLevel}/5</span>
+            <span>EXP {expansionLevel}/7</span>
           </div>
 
           {/* BOTÃO DE ZOOM (CIDADE / BAIRRO) */}
@@ -496,7 +572,7 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
                       Mapa de Navegação GPS • Cidade Real 3D
                     </h2>
                     <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400 text-amber-300 font-mono text-[10px] font-black">
-                      {expansionLevel} de 5 Bairros Abertos
+                      {expansionLevel} de 7 Bairros Abertos
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-300">
@@ -526,18 +602,18 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
                 <svg className="w-full h-full p-2 select-none" viewBox="0 0 100 100">
                   {/* Mar / Oceano Leste */}
                   <rect
-                    x={worldToMap(78, -105).x}
+                    x={worldToMap(196, -260).x}
                     y="0"
-                    width="25"
+                    width="30"
                     height="100"
                     fill="#0284c7"
                     fillOpacity={expansionLevel >= 4 ? 0.35 : 0.15}
                   />
-                  <text x="91" y="50" fontSize="3" fill="#38bdf8" textAnchor="middle" transform="rotate(90, 91, 50)" fontWeight="bold">
+                  <text x="93" y="50" fontSize="2.8" fill="#38bdf8" textAnchor="middle" transform="rotate(90, 93, 50)" fontWeight="bold">
                     OCEANO & PRAIA
                   </text>
 
-                  {/* 5 Distritos Urbanos */}
+                  {/* 7 Distritos Urbanos */}
                   {CITY_DISTRICTS.map((dist) => {
                     const b = dist.bounds;
                     const p1 = worldToMap(b.minX, b.minZ);
@@ -607,17 +683,21 @@ export const NavigationMiniMap: React.FC<NavigationMiniMapProps> = ({
                     );
                   })}
 
-                  {/* Pontos de Interesse (Lojas, Oficinas, Praças) */}
+                  {/* Pontos de Interesse com Ícones */}
                   {locations.map((loc) => {
                     const pos = worldToMap(loc.x, loc.z);
+                    const iconInfo = getLocationIconInfo(loc);
                     return (
                       <g
                         key={loc.id}
                         className="cursor-pointer"
                         onClick={() => onSetGPSDestination?.(loc.x, loc.z, loc.name)}
                       >
-                        <circle cx={pos.x} cy={pos.y} r="2.4" fill="#38bdf8" stroke="#ffffff" strokeWidth="0.8" />
-                        <text x={pos.x} y={pos.y - 3} fontSize="2.8" fill="#e2e8f0" textAnchor="middle" fontWeight="600">
+                        <circle cx={pos.x} cy={pos.y} r="2.6" fill="#0f172a" stroke={iconInfo.color} strokeWidth="0.7" />
+                        <text x={pos.x} y={pos.y + 1.1} fontSize="3.4" textAnchor="middle">
+                          {iconInfo.emoji}
+                        </text>
+                        <text x={pos.x} y={pos.y - 3.2} fontSize="2.6" fill="#e2e8f0" textAnchor="middle" fontWeight="600">
                           {loc.name.length > 14 ? loc.name.slice(0, 12) + '...' : loc.name}
                         </text>
                       </g>

@@ -9,7 +9,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { ActiveJob, MainMission } from '../simulation/GameEngine';
-import { CITY_DISTRICTS, CITY_ROADS, MapDistrict } from './NavigationMiniMap';
+import { CITY_DISTRICTS, CITY_RIVER, CITY_ROADS, getLocationIconInfo, MapDistrict } from './NavigationMiniMap';
 
 export interface CircularMiniMapProps {
   playerX: number;
@@ -41,12 +41,12 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
   onSetGPSDestination,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState<'close' | 'far'>('close');
+  const [zoomLevel, setZoomLevel] = useState<'city' | 'far' | 'close'>('city');
   const [selectedDistrict, setSelectedDistrict] = useState<MapDistrict | null>(null);
 
   // Determina as coordenadas do objetivo atual da missão
-  let targetX = -14;
-  let targetZ = -14;
+  let targetX = 4.5;
+  let targetZ = 16;
   let targetTitle = 'Missão';
 
   if (targetPos) {
@@ -58,30 +58,41 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
     targetZ = activeJob.targetPos.z;
     targetTitle = activeJob.targetName || activeJob.name;
   } else if (currentMission) {
-    targetX = -14;
-    targetZ = -14;
+    targetX = 4.5;
+    targetZ = 16;
     targetTitle = currentMission.title;
   }
 
-  // Raio do radar em metros no mundo (60m no modo perto, 120m no modo aberto)
-  const radarRadius = zoomLevel === 'close' ? 60 : 120;
+  // Raio do radar em metros (city mostra a cidade inteira 3x, far 140m, close 65m)
+  const radarRadius = zoomLevel === 'city' ? 285 : (zoomLevel === 'far' ? 140 : 65);
 
   // Centro do SVG do radar circular (viewBox 0 0 100 100)
   const cx = 50;
   const cy = 50;
   const R = 43; // Raio máximo utilizável dentro do círculo com margem
 
-  // Rastreamento relativo entre o jogador e o objetivo da missão usando playerX e playerZ
-  const deltaX = targetX - playerX;
-  const deltaZ = targetZ - playerZ;
-  const distanceToTarget = Math.hypot(deltaX, deltaZ);
+  // No modo 'city', a câmera do radar fica centralizada na cidade (0,0) para mostrar todos os 7 bairros e ícones!
+  const radarCenterX = zoomLevel === 'city' ? 0 : playerX;
+  const radarCenterZ = zoomLevel === 'city' ? 0 : playerZ;
 
-  // Projeção relativa no radar: Theo Lucca fica SEMPRE no centro (cx, cy)
-  const relTargetX = (deltaX / radarRadius) * R;
-  const relTargetY = (deltaZ / radarRadius) * R;
+  // Função utilitária para projetar coordenadas do mundo no radar
+  const worldToRadar = (wx: number, wz: number) => {
+    const rx = ((wx - radarCenterX) / radarRadius) * R;
+    const ry = ((wz - radarCenterZ) / radarRadius) * R;
+    return {
+      x: cx + rx,
+      y: cy + ry,
+      dist: Math.hypot(rx, ry),
+    };
+  };
+
+  const playerRadar = worldToRadar(playerX, playerZ);
+  const distanceToTarget = Math.hypot(targetX - playerX, targetZ - playerZ);
+
+  const relTargetX = ((targetX - radarCenterX) / radarRadius) * R;
+  const relTargetY = ((targetZ - radarCenterZ) / radarRadius) * R;
   const distFromCenter = Math.hypot(relTargetX, relTargetY);
 
-  // Se o objetivo estiver além do radar, fixa na borda do círculo com ponteiro direcional
   const isTargetClamped = distFromCenter > (R - 4);
   const targetAngleRad = Math.atan2(relTargetY, relTargetX);
   const targetAngleDeg = (targetAngleRad * 180) / Math.PI;
@@ -101,7 +112,6 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
   const compassAngleDeg = ((-playerRotation * 180) / Math.PI + 180) % 360;
   const headingDegrees = Math.round((compassAngleDeg + 360) % 360);
 
-  // Sigla do rumo atual (N, NE, E, SE, S, SW, W, NW)
   const headingCardinal = 
     headingDegrees >= 338 || headingDegrees < 23 ? 'N' :
     headingDegrees >= 23 && headingDegrees < 68 ? 'NE' :
@@ -111,7 +121,6 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
     headingDegrees >= 203 && headingDegrees < 248 ? 'SW' :
     headingDegrees >= 248 && headingDegrees < 293 ? 'W' : 'NW';
 
-  // Configuração dos 4 pontos cardeais (N, S, E, W) e intermediários orbitando na borda
   const cardinalRadius = 39.5;
   const tickOuterRadius = 43.5;
 
@@ -126,26 +135,17 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
     { label: 'NW', offset: 315, isMajor: false, color: '#64748b' },
   ];
 
-  // Marcas graduadas na borda a cada 15 graus
   const COMPASS_TICKS = Array.from({ length: 24 }, (_, i) => i * 15);
 
-  // Função utilitária para projetar coordenadas do mundo no radar relativo ao jogador
-  const worldToRadar = (wx: number, wz: number) => {
-    const rx = ((wx - playerX) / radarRadius) * R;
-    const ry = ((wz - playerZ) / radarRadius) * R;
-    return {
-      x: cx + rx,
-      y: cy + ry,
-      dist: Math.hypot(rx, ry),
-    };
-  };
-
-  // Filtra elementos que estão visíveis dentro ou perto do radar
   const visibleRoads = CITY_ROADS.map((road) => {
     const p1 = worldToRadar(road.x1, road.z1);
     const p2 = worldToRadar(road.x2, road.z2);
     return { road, p1, p2 };
   });
+
+  const riverP1 = worldToRadar(-260, CITY_RIVER.z);
+  const riverP2 = worldToRadar(196, CITY_RIVER.z);
+  const seaStart = worldToRadar(196, 0);
 
   const visibleNPCs = npcs
     .map((npc) => ({ ...npc, ...worldToRadar(npc.x, npc.z) }))
@@ -160,14 +160,14 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
     .filter((m) => m.dist <= R);
 
   const visibleLocations = locations
-    .map((loc) => ({ ...loc, ...worldToRadar(loc.x, loc.z) }))
-    .filter((l) => l.dist <= R + 8);
+    .map((loc) => ({ ...loc, ...worldToRadar(loc.x, loc.z), iconInfo: getLocationIconInfo(loc) }))
+    .filter((l) => l.dist <= R - 2 && (zoomLevel !== 'city' || l.iconInfo.priority >= 8));
 
-  // Projeção global para o mapa expandido
-  const minX = -105;
-  const maxX = 105;
-  const minZ = -105;
-  const maxZ = 65;
+  // Projeção global para o mapa expandido (7 Bairros + Rio + Praia)
+  const minX = -265;
+  const maxX = 275;
+  const minZ = -265;
+  const maxZ = 265;
 
   const worldToFullMap = (wx: number, wz: number) => {
     const px = ((wx - minX) / (maxX - minX)) * 90 + 5;
@@ -223,7 +223,26 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
               <line x1="50" y1="6" x2="50" y2="94" stroke="#334155" strokeWidth="0.5" strokeDasharray="2,2" opacity="0.6" />
               <line x1="6" y1="50" x2="94" y2="50" stroke="#334155" strokeWidth="0.5" strokeDasharray="2,2" opacity="0.6" />
 
-              {/* Ruas Asfaltadas Deslocando-se em Tempo Real sob Theo Lucca */}
+              {/* Oceano Leste e Rio Azul */}
+              <rect
+                x={seaStart.x}
+                y="0"
+                width="100"
+                height="100"
+                fill="#0284c7"
+                fillOpacity="0.35"
+              />
+              <line
+                x1={riverP1.x}
+                y1={riverP1.y}
+                x2={riverP2.x}
+                y2={riverP2.y}
+                stroke="#0ea5e9"
+                strokeWidth="3.2"
+                strokeOpacity="0.7"
+              />
+
+              {/* Ruas Asfaltadas dos 7 Bairros */}
               {visibleRoads.map(({ road, p1, p2 }, idx) => (
                 <g key={`r-road-${idx}`}>
                   <line
@@ -232,9 +251,9 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                     x2={p2.x}
                     y2={p2.y}
                     stroke="#475569"
-                    strokeWidth={road.isMain ? 4.5 : 3.0}
+                    strokeWidth={road.isMain ? 3.2 : 2.0}
                     strokeLinecap="round"
-                    opacity="0.8"
+                    opacity="0.85"
                   />
                   {road.isMain && (
                     <line
@@ -243,7 +262,7 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                       x2={p2.x}
                       y2={p2.y}
                       stroke="#facc15"
-                      strokeWidth="0.8"
+                      strokeWidth="0.6"
                       strokeDasharray="2,2"
                       opacity="0.9"
                     />
@@ -251,44 +270,53 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                 </g>
               ))}
 
-              {/* Lojas e Pontos de Interesse Próximos */}
+              {/* Pontos Importantes com Ícones (⛪ Igreja, 🛍️ Shopping, 🚓 Delegacia, 🛒 Mercado, 🏥 Hospital, 🏫 Escola) */}
               {visibleLocations.map((loc) => (
-                <circle
-                  key={`r-loc-${loc.id}`}
-                  cx={loc.x}
-                  cy={loc.y}
-                  r="2.2"
-                  fill="#0284c7"
-                  stroke="#ffffff"
-                  strokeWidth="0.6"
-                />
+                <g key={`r-loc-${loc.id}`}>
+                  <circle
+                    cx={loc.x}
+                    cy={loc.y}
+                    r={zoomLevel === 'city' ? 3.6 : 3.2}
+                    fill="#0f172a"
+                    stroke={loc.iconInfo.color}
+                    strokeWidth="0.6"
+                  />
+                  <text
+                    x={loc.x}
+                    y={loc.y + 1.5}
+                    fontSize={zoomLevel === 'city' ? '4.8' : '4.4'}
+                    textAnchor="middle"
+                  >
+                    {loc.iconInfo.emoji}
+                  </text>
+                </g>
               ))}
 
               {/* Moradores Próximos Andando */}
-              {visibleNPCs.map((npc, idx) => (
+              {zoomLevel !== 'city' && visibleNPCs.map((npc, idx) => (
                 <circle
                   key={`r-npc-${idx}`}
                   cx={npc.x}
                   cy={npc.y}
-                  r="1.5"
+                  r="1.4"
                   fill={npc.gender === 'female' ? '#f43f5e' : '#38bdf8'}
                   stroke="#ffffff"
                   strokeWidth="0.4"
                 />
               ))}
 
-              {/* Veículos em Trânsito Próximos */}
+              {/* Veículos em Trânsito */}
               {visibleCars.map((car, idx) => (
                 <rect
                   key={`r-car-${idx}`}
-                  x={car.x - 1.4}
-                  y={car.y - 1.4}
-                  width="2.8"
-                  height="2.8"
+                  x={car.x - 1.2}
+                  y={car.y - 1.2}
+                  width="2.4"
+                  height="2.4"
                   rx="0.5"
                   fill="#f97316"
                   stroke="#ffffff"
-                  strokeWidth="0.4"
+                  strokeWidth="0.35"
                 />
               ))}
 
@@ -297,21 +325,21 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                   key={`r-moto-${idx}`}
                   cx={moto.x}
                   cy={moto.y}
-                  r="1.4"
+                  r="1.2"
                   fill="#eab308"
                   stroke="#ffffff"
-                  strokeWidth="0.4"
+                  strokeWidth="0.35"
                 />
               ))}
 
               {/* LINHA DE GUIA GPS EM AMARELO OURO DO THEO ATÉ O ALVO */}
               <line
-                x1={cx}
-                y1={cy}
+                x1={playerRadar.x}
+                y1={playerRadar.y}
                 x2={targetSvgX}
                 y2={targetSvgY}
                 stroke="#facc15"
-                strokeWidth="2.2"
+                strokeWidth="1.8"
                 strokeDasharray="2.5,2"
                 strokeLinecap="round"
                 filter="url(#radarTargetGlow)"
@@ -319,9 +347,7 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
 
               {/* INDICADOR DO OBJETIVO DA MISSÃO (★) */}
               {isTargetClamped ? (
-                // Alvo além do radar: pino e seta direcional na borda do círculo
                 <g>
-                  {/* Seta direcional apontando na direção do alvo */}
                   <polygon
                     points="0,-3.5 3.5,3.5 0,1.5 -3.5,3.5"
                     fill="#f59e0b"
@@ -329,11 +355,10 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                     strokeWidth="0.8"
                     transform={`translate(${targetSvgX}, ${targetSvgY}) rotate(${targetAngleDeg + 90})`}
                   />
-                  {/* Ponto na borda */}
                   <circle
                     cx={targetSvgX}
                     cy={targetSvgY}
-                    r="3.4"
+                    r="3.2"
                     fill="#eab308"
                     stroke="#ffffff"
                     strokeWidth="1.0"
@@ -342,7 +367,7 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                   <text
                     x={targetSvgX}
                     y={targetSvgY + 1.2}
-                    fontSize="3.8"
+                    fontSize="3.6"
                     fill="#0f172a"
                     textAnchor="middle"
                     fontWeight="900"
@@ -351,12 +376,11 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                   </text>
                 </g>
               ) : (
-                // Alvo visível dentro do círculo do radar
                 <g>
                   <circle
                     cx={targetSvgX}
                     cy={targetSvgY}
-                    r="7"
+                    r="6.2"
                     fill="#f59e0b"
                     fillOpacity="0.4"
                     className="animate-ping"
@@ -364,16 +388,16 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                   <circle
                     cx={targetSvgX}
                     cy={targetSvgY}
-                    r="4.2"
+                    r="3.8"
                     fill="#eab308"
                     stroke="#ffffff"
-                    strokeWidth="1.2"
+                    strokeWidth="1.0"
                     filter="url(#radarTargetGlow)"
                   />
                   <text
                     x={targetSvgX}
-                    y={targetSvgY + 1.4}
-                    fontSize="4.6"
+                    y={targetSvgY + 1.3}
+                    fontSize="4.2"
                     fill="#0f172a"
                     textAnchor="middle"
                     fontWeight="900"
@@ -383,28 +407,25 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                 </g>
               )}
 
-              {/* THEO LUCCA NO CENTRO EXATO DO RADAR CIRCULAR */}
-              <g transform={`translate(${cx}, ${cy})`}>
-                {/* Cone de visão dinâmico */}
+              {/* THEO LUCCA SE MOVENDO NO RADAR CIRCULAR */}
+              <g transform={`translate(${playerRadar.x}, ${playerRadar.y})`}>
                 <path
-                  d="M 0 0 L -6 -16 L 6 -16 Z"
+                  d="M 0 0 L -5 -13 L 5 -13 Z"
                   fill="#38bdf8"
                   fillOpacity="0.35"
                   transform={`rotate(${playerAngleDeg})`}
                 />
 
-                {/* Seta direcional de Theo Lucca */}
                 <g transform={`rotate(${playerAngleDeg})`}>
                   <polygon
-                    points="0,-5.5 3.8,3.8 0,1.5 -3.8,3.8"
+                    points="0,-5 3.5,3.2 0,1.3 -3.5,3.2"
                     fill="#0284c7"
                     stroke="#ffffff"
-                    strokeWidth="1.2"
+                    strokeWidth="1.1"
                   />
                 </g>
 
-                {/* Ponto central azul neon */}
-                <circle cx="0" cy="0" r="2.2" fill="#38bdf8" stroke="#ffffff" strokeWidth="0.8" />
+                <circle cx="0" cy="0" r="2.0" fill="#38bdf8" stroke="#ffffff" strokeWidth="0.8" />
               </g>
 
               {/* Anel de borda interna do radar */}
@@ -534,16 +555,16 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
             <span className="text-white">{headingDegrees}°</span>
           </div>
 
-          {/* BOTÃO ALTERNAR ZOOM (1X / 2X) */}
+          {/* BOTÃO ALTERNAR ZOOM (CIDADE / 2X / 1X) */}
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setZoomLevel((prev) => (prev === 'close' ? 'far' : 'close'));
+              setZoomLevel((prev) => (prev === 'city' ? 'far' : (prev === 'far' ? 'close' : 'city')));
             }}
-            className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 hover:border-amber-400 text-amber-300 hover:text-white text-[7.5px] font-mono font-bold shadow transition"
-            title="Alternar alcance do radar (60m / 120m)"
+            className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 hover:border-amber-400 text-amber-300 hover:text-white text-[7px] font-mono font-bold shadow transition"
+            title="Alternar alcance do radar (Cidade Toda / 2X / 1X)"
           >
-            {zoomLevel === 'close' ? '1X' : '2X'}
+            {zoomLevel === 'city' ? 'TODO' : (zoomLevel === 'far' ? '2X' : '1X')}
           </button>
 
           {/* BOTÃO EXPANDIR EM TELA CHEIA */}
@@ -604,7 +625,7 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                       Mapa de Navegação GPS • Cidade Real 3D
                     </h2>
                     <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400 text-amber-300 font-mono text-[10px] font-black">
-                      {expansionLevel} de 5 Bairros Abertos
+                      {expansionLevel} de 7 Bairros Abertos
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-300">
@@ -630,14 +651,23 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                 <div className="absolute inset-0 bg-[radial-gradient(#334155_1.5px,transparent_1.5px)] [background-size:16px_16px] opacity-35" />
 
                 <svg className="w-full h-full p-2 select-none" viewBox="0 0 100 100">
-                  {/* Mar / Oceano Leste */}
+                  {/* Mar / Oceano Leste e Rio Azul */}
                   <rect
-                    x={worldToFullMap(78, -105).x}
+                    x={worldToFullMap(196, -260).x}
                     y="0"
-                    width="25"
+                    width="30"
                     height="100"
                     fill="#0284c7"
-                    fillOpacity={expansionLevel >= 4 ? 0.35 : 0.15}
+                    fillOpacity={0.38}
+                  />
+                  <line
+                    x1={worldToFullMap(-260, CITY_RIVER.z).x}
+                    y1={worldToFullMap(-260, CITY_RIVER.z).y}
+                    x2={worldToFullMap(196, CITY_RIVER.z).x}
+                    y2={worldToFullMap(196, CITY_RIVER.z).y}
+                    stroke="#0ea5e9"
+                    strokeWidth="3.5"
+                    strokeOpacity="0.65"
                   />
 
                   {/* Distritos Urbanos */}
@@ -699,17 +729,21 @@ export const CircularMiniMap: React.FC<CircularMiniMapProps> = ({
                     );
                   })}
 
-                  {/* Locais de Interesse */}
+                  {/* Locais de Interesse com Ícones */}
                   {locations.map((loc) => {
                     const pos = worldToFullMap(loc.x, loc.z);
+                    const iconInfo = getLocationIconInfo(loc);
                     return (
                       <g
                         key={`m-loc-${loc.id}`}
                         className="cursor-pointer"
                         onClick={() => onSetGPSDestination?.(loc.x, loc.z, loc.name)}
                       >
-                        <circle cx={pos.x} cy={pos.y} r="2.4" fill="#38bdf8" stroke="#ffffff" strokeWidth="0.8" />
-                        <text x={pos.x} y={pos.y - 3} fontSize="2.8" fill="#e2e8f0" textAnchor="middle" fontWeight="600">
+                        <circle cx={pos.x} cy={pos.y} r="2.8" fill="#0f172a" stroke={iconInfo.color} strokeWidth="0.7" />
+                        <text x={pos.x} y={pos.y + 1.1} fontSize="3.5" textAnchor="middle">
+                          {iconInfo.emoji}
+                        </text>
+                        <text x={pos.x} y={pos.y - 3.4} fontSize="2.5" fill="#e2e8f0" textAnchor="middle" fontWeight="600">
                           {loc.name.length > 14 ? loc.name.slice(0, 12) + '...' : loc.name}
                         </text>
                       </g>

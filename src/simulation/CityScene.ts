@@ -9,6 +9,21 @@ import {
   createCheckeredFloorTexture,
   createWoodFloorTexture,
 } from './textures';
+import {
+  buildBusStopAndStreetFurniture,
+  buildChurchLandmark,
+  buildCivicOrShopBuilding,
+  buildEmergencyVehicle,
+  buildFeiraLivre,
+  buildGasStation,
+  buildHouseVariant,
+  buildMultiStoryBuilding,
+  buildPlaygroundAndCourtPark,
+  buildRiverAndBridges,
+  buildShoppingMall,
+  buildStreetNameSign,
+  CityLandmarkContext,
+} from './cityLandmarks';
 
 export interface TrafficLight {
   group: THREE.Group;
@@ -143,6 +158,7 @@ export interface CitySceneObjects {
   expandCity: (newLevel: number) => { name: string; desc: string; unlockedFeatures: string[] };
   streetLamps: { position: THREE.Vector3; glowMesh: THREE.Mesh; bulbMesh: THREE.Mesh }[];
   setStreetLights: (on: boolean) => void;
+  setCameraDistanceLOD: (camDist: number) => void;
 }
 
 export function createCityScene(): CitySceneObjects {
@@ -223,32 +239,45 @@ export function createCityScene(): CitySceneObjects {
   const yellowPaintMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.45 });
   const whitePaintMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.45 });
 
-  // 1. TERRENO AMPLO REALISTA (240m x 240m)
-  const terrainGeo = new THREE.PlaneGeometry(250, 250);
+  // 1. TERRENO AMPLO REALISTA (780m x 780m para comportar a Cidade Gigante 3x com 7 Bairros!)
+  grassTex.repeat.set(48, 48);
+  sandTex.repeat.set(24, 36);
+
+  const terrainGeo = new THREE.PlaneGeometry(780, 780);
   terrainGeo.rotateX(-Math.PI / 2);
   const terrain = new THREE.Mesh(terrainGeo, grassMat);
+  terrain.position.set(-20, 0, 0);
   terrain.receiveShadow = true;
   scene.add(terrain);
 
-  // Praia ampla no lado leste (+X) com dunas suaves
-  const beachGeo = new THREE.PlaneGeometry(80, 250);
+  // Praia ampla no lado leste (+X) com areia dourada e calçadão
+  const beachGeo = new THREE.PlaneGeometry(110, 780);
   beachGeo.rotateX(-Math.PI / 2);
   const beach = new THREE.Mesh(beachGeo, sandMat);
-  beach.position.set(88, 0.015, 0);
+  beach.position.set(240, 0.015, 0);
   beach.receiveShadow = true;
   scene.add(beach);
 
-  // Mar com ondas suaves
-  const oceanGeo = new THREE.PlaneGeometry(90, 250);
+  // Mar com ondas suaves no extremo leste
+  const oceanGeo = new THREE.PlaneGeometry(240, 780);
   oceanGeo.rotateX(-Math.PI / 2);
   const waterMesh = new THREE.Mesh(oceanGeo, waterMat);
-  waterMesh.position.set(145, 0.03, 0);
+  waterMesh.position.set(410, 0.03, 0);
   scene.add(waterMesh);
 
-  // Guarda-sóis coloridos e espreguiçadeiras na praia
-  for (let i = 0; i < 6; i++) {
+  // Calçadão ladrilhado da Orla
+  const boardwalk = new THREE.Mesh(
+    new THREE.BoxGeometry(8.5, 0.16, 560),
+    sidewalkMat
+  );
+  boardwalk.position.set(191.5, 0.08, 0);
+  boardwalk.receiveShadow = true;
+  scene.add(boardwalk);
+
+  // Guarda-sóis coloridos e espreguiçadeiras na areia da Praia
+  for (let i = 0; i < 14; i++) {
     const umbrellaGroup = new THREE.Group();
-    umbrellaGroup.position.set(78 + (i % 2) * 14, 0, -65 + i * 26);
+    umbrellaGroup.position.set(202 + (i % 2) * 12, 0, -210 + i * 32);
 
     const poleGeo = new THREE.CylinderGeometry(0.045, 0.045, 2.5, 8);
     const poleMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc });
@@ -265,7 +294,6 @@ export function createCityScene(): CitySceneObjects {
     cone.castShadow = true;
     umbrellaGroup.add(cone);
 
-    // Cadeira de praia reclinada de madeira
     const chairGeo = new THREE.BoxGeometry(0.8, 0.25, 1.6);
     const chairMat = new THREE.MeshStandardMaterial({ color: 0xffedd5, roughness: 0.7 });
     const chair = new THREE.Mesh(chairGeo, chairMat);
@@ -292,8 +320,8 @@ export function createCityScene(): CitySceneObjects {
     // Linhas brancas contínuas nos bordos da pista
     const edgeOffset = width / 2 - 0.35;
     for (const side of [-1, 1]) {
-      const edgeGeo = isVertical 
-        ? new THREE.PlaneGeometry(0.18, length) 
+      const edgeGeo = isVertical
+        ? new THREE.PlaneGeometry(0.18, length)
         : new THREE.PlaneGeometry(length, 0.18);
       edgeGeo.rotateX(-Math.PI / 2);
       const edgeLine = new THREE.Mesh(edgeGeo, whitePaintMat);
@@ -305,36 +333,49 @@ export function createCityScene(): CitySceneObjects {
       roadNetwork.add(edgeLine);
     }
 
-    // Faixa pontilhada amarela dupla central
-    const stripeCount = Math.floor(length / 4.8);
+    // Faixa pontilhada amarela central (espaçamento otimizado para vias longas)
+    const step = 6.0;
+    const stripeCount = Math.floor(length / step);
     for (let s = -stripeCount / 2; s < stripeCount / 2; s++) {
-      const stripeGeo = isVertical 
-        ? new THREE.PlaneGeometry(0.24, 2.4) 
-        : new THREE.PlaneGeometry(2.4, 0.24);
+      const stripeGeo = isVertical
+        ? new THREE.PlaneGeometry(0.24, 2.8)
+        : new THREE.PlaneGeometry(2.8, 0.24);
       stripeGeo.rotateX(-Math.PI / 2);
       const stripe = new THREE.Mesh(stripeGeo, yellowPaintMat);
       if (isVertical) {
-        stripe.position.set(x, 0.025, z + s * 4.8 + 2.4);
+        stripe.position.set(x, 0.025, z + s * step + step * 0.5);
       } else {
-        stripe.position.set(x + s * 4.8 + 2.4, 0.025, z);
+        stripe.position.set(x + s * step + step * 0.5, 0.025, z);
       }
       roadNetwork.add(stripe);
     }
   };
 
-  // Vias principais ampliadas
-  addRoad(0, 0, 11.0, 220, true);         // Av. Central Norte-Sul
-  addRoad(58, 0, 10.0, 220, true);        // Av. da Orla & Praia Norte-Sul
-  addRoad(-58, 0, 10.0, 220, true);       // Av. Oeste Norte-Sul
-  addRoad(0, 0, 220, 11.0, false);        // Av. Comercial Central Leste-Oeste
-  addRoad(0, -52, 220, 10.0, false);      // Av. Residencial Norte Leste-Oeste
-  addRoad(0, 52, 220, 10.0, false);       // Av. do Parque & Escola Sul Leste-Oeste
+  // Malha Viária Ampliada 3x: 17 Vias conectando todos os 7 Bairros!
+  addRoad(-240, 0, 10.0, 530, true);     // Av. Serra Verde (Oeste)
+  addRoad(-180, 0, 10.0, 530, true);     // Av. das Flores (Jardim das Flores)
+  addRoad(-120, 0, 10.0, 530, true);     // Av. Bairro Alto
+  addRoad(-60, 0, 10.0, 530, true);      // Rua da Igreja
+  addRoad(0, 0, 12.0, 530, true);        // Avenida Central (Norte-Sul)
+  addRoad(60, 0, 10.0, 530, true);       // Rua do Shopping
+  addRoad(120, 0, 10.0, 530, true);      // Av. Zona Leste
+  addRoad(180, 0, 10.0, 530, true);      // Rua da Praia / Orla
 
-  // Faixas de pedestres nas esquinas (Crosswalks zebradas)
+  addRoad(-30, -240, 450, 10.0, false);  // Av. Horizonte Norte
+  addRoad(-30, -180, 450, 10.0, false);  // Av. Independência
+  addRoad(-30, -120, 450, 10.0, false);  // Av. dos Condomínios
+  addRoad(-30, -60, 450, 10.0, false);   // Av. Bairro Novo
+  addRoad(-30, 0, 450, 12.0, false);     // Av. Comercial Central (Leste-Oeste)
+  addRoad(-30, 60, 450, 10.0, false);    // Av. do Parque & Beira-Rio
+  addRoad(-30, 120, 450, 10.0, false);   // Av. Beira-Rio Sul
+  addRoad(-30, 180, 450, 10.0, false);   // Av. Bairro Baixo
+  addRoad(-30, 240, 450, 10.0, false);   // Av. Vila Alegre Sul
+
+  // Faixas de pedestres nas esquinas principais (Crosswalks zebradas)
   const addCrosswalk = (x: number, z: number, isVertical: boolean) => {
     for (let i = -4; i <= 4; i++) {
-      const barGeo = isVertical 
-        ? new THREE.PlaneGeometry(0.7, 3.8) 
+      const barGeo = isVertical
+        ? new THREE.PlaneGeometry(0.7, 3.8)
         : new THREE.PlaneGeometry(3.8, 0.7);
       barGeo.rotateX(-Math.PI / 2);
       const bar = new THREE.Mesh(barGeo, whitePaintMat);
@@ -347,17 +388,24 @@ export function createCityScene(): CitySceneObjects {
     }
   };
 
-  addCrosswalk(0, -8.0, true);
-  addCrosswalk(0, 8.0, true);
-  addCrosswalk(-8.0, 0, false);
-  addCrosswalk(8.0, 0, false);
+  addCrosswalk(0, -8.5, true);
+  addCrosswalk(0, 8.5, true);
+  addCrosswalk(-8.5, 0, false);
+  addCrosswalk(8.5, 0, false);
+  addCrosswalk(0, -52.5, true);
+  addCrosswalk(0, -67.5, true);
+  addCrosswalk(0, 52.5, true);
+  addCrosswalk(0, 67.5, true);
+  addCrosswalk(-60, -8.5, true);
+  addCrosswalk(-60, 8.5, true);
+  addCrosswalk(60, -8.5, true);
+  addCrosswalk(60, 8.5, true);
+  addCrosswalk(-120, -8.5, true);
+  addCrosswalk(120, -8.5, true);
+  addCrosswalk(0, -172, true);
+  addCrosswalk(0, 172, true);
 
-  addCrosswalk(0, -44.5, true);
-  addCrosswalk(0, -59.5, true);
-  addCrosswalk(0, 44.5, true);
-  addCrosswalk(0, 59.5, true);
-
-  // Calçadas de concreto com lajotas e meio-fio chanfrado
+  // Calçadas de concreto em todos os 49 quarteirões dos 7 bairros
   const addSidewalkBlock = (x: number, z: number, w: number, d: number) => {
     const swGeo = new THREE.BoxGeometry(w, 0.18, d);
     const sw = new THREE.Mesh(swGeo, sidewalkMat);
@@ -365,7 +413,6 @@ export function createCityScene(): CitySceneObjects {
     sw.receiveShadow = true;
     roadNetwork.add(sw);
 
-    // Meio-fio de granito escovado no contorno
     const curbBorderGeo = new THREE.BoxGeometry(w + 0.25, 0.22, d + 0.25);
     const curbBorder = new THREE.Mesh(curbBorderGeo, curbMat);
     curbBorder.position.set(x, 0.07, z);
@@ -373,19 +420,29 @@ export function createCityScene(): CitySceneObjects {
     roadNetwork.add(curbBorder);
   };
 
-  addSidewalkBlock(-29, -26, 44, 38); // Quarteirão 1: Pizzaria & Padaria (Com interiores)
-  addSidewalkBlock(-29, 26, 44, 38);  // Quarteirão 2: Mercado & Loja Brinquedos (Com interiores)
-  addSidewalkBlock(29, -26, 44, 38);  // Quarteirão 3: Loja de Roupas & Praça
-  addSidewalkBlock(29, 26, 44, 38);   // Quarteirão 4: Praça da Fonte, Lago & Parque
-  addSidewalkBlock(-29, -78, 44, 38); // Quarteirão Residencial (Casas)
-  addSidewalkBlock(-29, 78, 44, 38);  // Quarteirão Escola Infantil & Playground
+  const blockXs = [-210, -150, -90, -30, 30, 90, 150];
+  const blockZs = [-210, -150, -90, -30, 30, 150, 210];
+  for (const bx of blockXs) {
+    for (const bz of blockZs) {
+      addSidewalkBlock(bx, bz, 47, 46);
+    }
+  }
+
+  // Grupo LOD para micro-detalhes de rua (oculta automaticamente quando a câmera está muito longe)
+  const detailGroup = new THREE.Group();
+  detailGroup.name = 'CityMicroDetailsLOD';
+  scene.add(detailGroup);
+  const nightWindowMaterials: THREE.MeshStandardMaterial[] = [];
+  const emissiveSignMaterials: THREE.MeshStandardMaterial[] = [];
 
   // --- POSTES DE ILUMINAÇÃO PÚBLICA REALISTAS COM LUMINÁRIAS E ILUMINAÇÃO NOTURNA ---
   const lampPositions = [
-    [-7.0, -18], [-7.0, 18], [-7.0, 36], [-7.0, -36],
-    [7.0, -18], [7.0, 18], [7.0, 36], [7.0, -36],
+    [-7.0, -18], [-7.0, 18], [-7.0, 42], [-7.0, -42], [-7.0, 90], [-7.0, 145], [-7.0, -145], [-7.0, 205], [-7.0, -205],
+    [7.0, -18], [7.0, 18], [7.0, 42], [7.0, -42], [7.0, 90], [7.0, 145], [7.0, -145], [7.0, 205], [7.0, -205],
     [-24, -7.0], [24, -7.0], [-24, 7.0], [24, 7.0],
-    [50, -25], [50, 25], [-50, -25], [-50, 25],
+    [53, -25], [53, 25], [-53, -25], [-53, 25],
+    [113, -30], [113, 30], [173, -40], [173, 0], [173, 40],
+    [-113, -30], [-113, 30], [-173, -90], [-173, -150], [83, 195],
   ];
 
   const streetLamps: { position: THREE.Vector3; glowMesh: THREE.Mesh; bulbMesh: THREE.Mesh }[] = [];
@@ -467,6 +524,14 @@ export function createCityScene(): CitySceneObjects {
         (bulbMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = bulbEmissive;
       }
     });
+    // Acende as janelas dos prédios residenciais de 5 a 10 andares, igrejas e casas à noite!
+    nightWindowMaterials.forEach((mat) => {
+      mat.emissiveIntensity = on ? 0.95 : 0.1;
+    });
+  };
+
+  const setCameraDistanceLOD = (camDist: number) => {
+    detailGroup.visible = camDist <= 105;
   };
 
   // --- SEMÁFOROS FUNCIONAIS REALISTAS ---
@@ -524,6 +589,8 @@ export function createCityScene(): CitySceneObjects {
   trafficLights.push(createTrafficLight(new THREE.Vector3(-6.5, 0, 6.8), 0));
   trafficLights.push(createTrafficLight(new THREE.Vector3(-6.8, 0, -6.5), Math.PI / 2));
   trafficLights.push(createTrafficLight(new THREE.Vector3(6.8, 0, 6.5), -Math.PI / 2));
+  trafficLights.push(createTrafficLight(new THREE.Vector3(-53.5, 0, -6.5), Math.PI));
+  trafficLights.push(createTrafficLight(new THREE.Vector3(64.5, 0, 6.5), 0));
 
   // =========================================================================
   // --- EDIFÍCIOS REALISTAS COM INTERIORES EXPLORÁVEIS (THEO ENTRA DENTRO!) ---
@@ -1789,57 +1856,438 @@ export function createCityScene(): CitySceneObjects {
     }
   });
 
-  // 7. BAIRRO RESIDENCIAL: CASAS DOS VIZINHOS
-  const houseColors = [0xfef08a, 0xbae6fd, 0xfbcfe8, 0xdcfce7, 0xfde047];
-  const houseRoofColors = [0xb91c1c, 0x1e3a8a, 0x831843, 0x14532d, 0xc2410c];
+  // =========================================================================
+  // 7. OS 7 BAIRROS COMPLETOS DA CIDADE GIGANTE 3X + RIO + 8 PONTES + 5 IGREJAS
+  // =========================================================================
+  const landmarkCtx: CityLandmarkContext = {
+    scene,
+    detailGroup,
+    boxColliders,
+    circleColliders,
+    locations,
+    nightWindowMaterials,
+    emissiveSignMaterials,
+    customerHouses,
+    mailboxes,
+  };
 
-  for (let h = 0; h < 5; h++) {
-    const hPos = new THREE.Vector3(-48 + h * 11.5, 0, -80);
-    const houseGroup = new THREE.Group();
-    houseGroup.position.copy(hPos);
+  // RIO AZUL ATRAVESSANDO A CIDADE + 8 PONTES CONECTANDO TODOS OS 7 BAIRROS
+  buildRiverAndBridges(landmarkCtx, 90, [-240, -180, -120, -60, 0, 60, 120, 180], 480, -42);
 
-    const hGeo = new THREE.BoxGeometry(8.0, 4.8, 8.0);
-    const hMat = new THREE.MeshStandardMaterial({ color: houseColors[h], roughness: 0.65 });
-    const houseMesh = new THREE.Mesh(hGeo, hMat);
-    houseMesh.position.y = 2.4;
-    houseMesh.castShadow = true;
-    houseGroup.add(houseMesh);
+  // --- BAIRRO 1: CENTRO (Igreja Matriz, Delegacia + Viaturas, Prefeitura, Banco, Farmácia, Lanchonete, Feira, Torres) ---
+  buildChurchLandmark(landmarkCtx, {
+    id: 'igreja_matriz',
+    name: 'Igreja Matriz do Centro',
+    x: 13,
+    z: 16,
+    variant: 'matriz',
+    rotY: -Math.PI / 2,
+  });
 
-    const roofConeGeo = new THREE.ConeGeometry(6.4, 2.6, 4);
-    roofConeGeo.rotateY(Math.PI / 4);
-    const roofConeMat = new THREE.MeshStandardMaterial({ color: houseRoofColors[h], roughness: 0.55 });
-    const roofMesh = new THREE.Mesh(roofConeGeo, roofConeMat);
-    roofMesh.position.y = 6.1;
-    roofMesh.castShadow = true;
-    houseGroup.add(roofMesh);
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'delegacia_policia',
+    name: 'Delegacia de Polícia',
+    category: 'landmark',
+    x: 45,
+    z: 16,
+    w: 12,
+    d: 13,
+    h: 6.4,
+    wallColor: 0x1d4ed8,
+    roofColor: 0x0f172a,
+    signTitle: 'DELEGACIA',
+    signSubtitle: 'POLÍCIA DA CIDADE',
+    signBg: 0x1e3a8a,
+    rotY: Math.PI,
+  });
+  buildEmergencyVehicle(landmarkCtx, 42, 7.2, 0.15, 'police');
+  buildEmergencyVehicle(landmarkCtx, 48, 7.2, -0.15, 'police');
 
-    // Caixa de correio na calçada
-    const mbPos = new THREE.Vector3(hPos.x + 2.8, 0, -59.0);
-    mailboxes.push(mbPos);
-    customerHouses.push(new THREE.Vector3(hPos.x, 0, -61.0));
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'prefeitura_centro',
+    name: 'Prefeitura Municipal',
+    category: 'landmark',
+    x: 45,
+    z: -24,
+    w: 11,
+    d: 14,
+    h: 8.2,
+    wallColor: 0xf8fafc,
+    roofColor: 0x334155,
+    signTitle: 'PREFEITURA',
+    signSubtitle: 'CIDADE REAL 3D',
+    signBg: 0x0f172a,
+    signText: '#facc15',
+    hasColumns: true,
+  });
 
-    const postGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.0, 8);
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
-    const post = new THREE.Mesh(postGeo, postMat);
-    post.position.set(mbPos.x, 0.5, mbPos.z);
-    scene.add(post);
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'banco_central',
+    name: 'Banco Central',
+    category: 'shop',
+    x: 13,
+    z: -24,
+    w: 10,
+    d: 12,
+    h: 7.4,
+    wallColor: 0xe2e8f0,
+    roofColor: 0x1e293b,
+    signTitle: 'BANCO CENTRAL',
+    signBg: 0x047857,
+    hasColumns: true,
+  });
 
-    const boxGeo = new THREE.BoxGeometry(0.38, 0.28, 0.48);
-    const boxMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 });
-    const mbBox = new THREE.Mesh(boxGeo, boxMat);
-    mbBox.position.set(mbPos.x, 1.1, mbPos.z);
-    scene.add(mbBox);
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'farmacia_centro',
+    name: 'Farmácia Saúde',
+    category: 'shop',
+    x: 13,
+    z: 40,
+    w: 10,
+    d: 9,
+    h: 5.0,
+    wallColor: 0xffffff,
+    roofColor: 0xdc2626,
+    signTitle: 'FARMÁCIA',
+    signBg: 0xdc2626,
+    hasRedCross: true,
+  });
 
-    scene.add(houseGroup);
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'lanchonete_sorveteria',
+    name: 'Lanchonete & Sorveteria',
+    category: 'shop',
+    x: 45,
+    z: 40,
+    w: 10,
+    d: 9,
+    h: 5.0,
+    wallColor: 0xfef3c7,
+    roofColor: 0xdb2777,
+    signTitle: 'LANCHONETE',
+    signSubtitle: '& SORVETERIA',
+    signBg: 0xdb2777,
+  });
 
-    boxColliders.push({
-      minX: hPos.x - 4.2,
-      maxX: hPos.x + 4.2,
-      minZ: hPos.z - 4.2,
-      maxZ: hPos.z + 4.2,
-      name: `house_${h}`
-    });
-  }
+  buildFeiraLivre(landmarkCtx, -35, 11);
+
+  // Prédios altos do Centro (6 a 11 andares)
+  buildMultiStoryBuilding(landmarkCtx, { x: -42, z: -42, w: 12, d: 9, floors: 7, style: 'brick', wallColor: 0xfff7ed, accentColor: 0x7c2d12 });
+  buildMultiStoryBuilding(landmarkCtx, { x: -20, z: -42, w: 13, d: 9, floors: 10, style: 'glass', wallColor: 0x1e293b, accentColor: 0x0f172a });
+  buildMultiStoryBuilding(landmarkCtx, { x: 13, z: -42, w: 11, d: 9, floors: 11, style: 'glass', wallColor: 0x0f172a, accentColor: 0x0284c7 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 30, z: -42, w: 12, d: 9, floors: 8, style: 'concrete', wallColor: 0xe2e8f0, accentColor: 0x334155 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 45, z: -42, w: 10, d: 9, floors: 6, style: 'brick', wallColor: 0xfef2f2, accentColor: 0x991b1b });
+
+  // --- BAIRRO 2: BAIRRO ALTO (Igreja Branca com Escada, Escola, Creche, Campinho, Basquete, Casas e Torres) ---
+  buildChurchLandmark(landmarkCtx, {
+    id: 'igreja_bairro_alto',
+    name: 'Igreja do Bairro Alto',
+    x: -90,
+    z: -28,
+    variant: 'bairro_alto',
+    rotY: Math.PI / 2,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'escola_municipal',
+    name: 'Escola Municipal Theo Lucca',
+    category: 'landmark',
+    x: -90,
+    z: -90,
+    w: 18,
+    d: 14,
+    h: 6.2,
+    wallColor: 0xfef9c3,
+    roofColor: 0x1d4ed8,
+    signTitle: 'ESCOLA MUNICIPAL',
+    signSubtitle: 'ENSINO & AVENTURA',
+    signBg: 0x1d4ed8,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'creche_alegria',
+    name: 'Creche Alegria',
+    category: 'landmark',
+    x: -150,
+    z: -90,
+    w: 15,
+    d: 12,
+    h: 4.8,
+    wallColor: 0xfce7f3,
+    roofColor: 0xec4899,
+    signTitle: 'CRECHE ALEGRIA',
+    signBg: 0xec4899,
+  });
+
+  buildHouseVariant(landmarkCtx, { x: -150, z: -20, wallColor: 0xfef08a, roofColor: 0xb91c1c, variant: 'quintal' });
+  buildHouseVariant(landmarkCtx, { x: -150, z: -40, wallColor: 0xbae6fd, roofColor: 0x1e3a8a, variant: 'garagem' });
+  buildHouseVariant(landmarkCtx, { x: -90, z: -45, wallColor: 0xdcfce7, roofColor: 0x15803d, variant: 'muro_colorido', fenceColor: 0xf97316 });
+
+  buildMultiStoryBuilding(landmarkCtx, { x: -150, z: -150, w: 15, d: 13, floors: 7, style: 'concrete', wallColor: 0xf1f5f9, accentColor: 0x0284c7 });
+  buildMultiStoryBuilding(landmarkCtx, { x: -90, z: -150, w: 15, d: 13, floors: 8, style: 'brick', wallColor: 0xffedd5, accentColor: 0xb45309 });
+
+  // --- BAIRRO 3: BAIRRO BAIXO (Igreja Pequena Colorida, Mercadinho, Lan House, Casas Simples, Prédios) ---
+  buildChurchLandmark(landmarkCtx, {
+    id: 'igreja_bairro_baixo',
+    name: 'Igreja do Bairro Baixo',
+    x: -36,
+    z: 146,
+    variant: 'bairro_baixo',
+    rotY: Math.PI,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'mercadinho_bairro_baixo',
+    name: 'Mercadinho do Bairro',
+    category: 'shop',
+    x: -90,
+    z: 148,
+    w: 14,
+    d: 11,
+    h: 5.0,
+    wallColor: 0xd1fae5,
+    roofColor: 0x15803d,
+    signTitle: 'MERCADINHO',
+    signBg: 0x15803d,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'lan_house',
+    name: 'Lan House Cyber Kid',
+    category: 'shop',
+    x: -16,
+    z: 148,
+    w: 11,
+    d: 10,
+    h: 5.0,
+    wallColor: 0x1e1b4b,
+    roofColor: 0x4f46e5,
+    signTitle: 'LAN HOUSE',
+    signSubtitle: 'GAMES & INTERNET',
+    signBg: 0x4338ca,
+    signText: '#38bdf8',
+    rotY: Math.PI,
+  });
+
+  buildHouseVariant(landmarkCtx, { x: -150, z: 144, wallColor: 0xfde047, roofColor: 0xc2410c, variant: 'simples' });
+  buildHouseVariant(landmarkCtx, { x: -150, z: 162, wallColor: 0xfbcfe8, roofColor: 0x9d174d, variant: 'muro_colorido', fenceColor: 0x38bdf8 });
+  buildHouseVariant(landmarkCtx, { x: -90, z: 164, wallColor: 0xbae6fd, roofColor: 0x0369a1, variant: 'simples' });
+  buildHouseVariant(landmarkCtx, { x: -34, z: 164, wallColor: 0xfed7aa, roofColor: 0x7c2d12, variant: 'quintal' });
+
+  buildMultiStoryBuilding(landmarkCtx, { x: 28, z: 144, w: 15, d: 11, floors: 5, style: 'brick', wallColor: 0xfef3c7, accentColor: 0x9a3412 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 28, z: 162, w: 15, d: 11, floors: 6, style: 'concrete', wallColor: 0xe2e8f0, accentColor: 0x475569 });
+
+  // --- BAIRRO 4: PRAIA / ORLA & PARQUE (Playground, Quadra de Basquete, Lago, Hotel Beira-Mar) ---
+  buildPlaygroundAndCourtPark(landmarkCtx, 90, 28);
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'hotel_beira_mar',
+    name: 'Hotel & Resort Orla Sul',
+    category: 'landmark',
+    x: 150,
+    z: 28,
+    w: 18,
+    d: 14,
+    h: 9.0,
+    wallColor: 0xfef9c3,
+    roofColor: 0x0284c7,
+    signTitle: 'HOTEL ORLA',
+    signSubtitle: 'PRAIA & FÉRIAS',
+    signBg: 0x0369a1,
+    rotY: -Math.PI / 2,
+  });
+
+  // --- BAIRRO 5: BAIRRO NOVO (Shopping Grande, Hospital + Ambulância, Posto, Loja de Carros, Bombeiros, Condomínios) ---
+  buildShoppingMall(landmarkCtx, 90, -90);
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'hospital_municipal',
+    name: 'Hospital Municipal',
+    category: 'landmark',
+    x: 90,
+    z: -30,
+    w: 18,
+    d: 14,
+    h: 8.4,
+    wallColor: 0xffffff,
+    roofColor: 0x0284c7,
+    signTitle: 'HOSPITAL 24H',
+    signSubtitle: 'PRONTO-SOCORRO',
+    signBg: 0xdc2626,
+    hasRedCross: true,
+  });
+  buildEmergencyVehicle(landmarkCtx, 78, -17, 0.25, 'ambulance');
+
+  buildGasStation(landmarkCtx, 90, 148);
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'loja_de_carros',
+    name: 'Concessionária & Loja de Carros',
+    category: 'shop',
+    x: 30,
+    z: -90,
+    w: 18,
+    d: 12,
+    h: 5.6,
+    wallColor: 0xf1f5f9,
+    roofColor: 0x0f172a,
+    signTitle: 'LOJA DE CARROS',
+    signSubtitle: 'ESPORTIVOS & MOTOS',
+    signBg: 0x0284c7,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'quartel_bombeiros',
+    name: 'Corpo de Bombeiros',
+    category: 'landmark',
+    x: 150,
+    z: -30,
+    w: 18,
+    d: 14,
+    h: 6.8,
+    wallColor: 0xfee2e2,
+    roofColor: 0x991b1b,
+    signTitle: 'BOMBEIROS',
+    signSubtitle: 'RESGATE 193',
+    signBg: 0xdc2626,
+  });
+  buildEmergencyVehicle(landmarkCtx, 139, -17, -0.2, 'firetruck');
+
+  // Condomínios Residenciais Modernos no Bairro Novo & Leste (6 a 12 andares)
+  buildMultiStoryBuilding(landmarkCtx, { x: -30, z: -90, w: 16, d: 13, floors: 8, style: 'glass', wallColor: 0x1e293b, accentColor: 0x38bdf8 });
+  buildMultiStoryBuilding(landmarkCtx, { x: -30, z: -150, w: 16, d: 13, floors: 10, style: 'concrete', wallColor: 0xf8fafc, accentColor: 0x1e40af });
+  buildMultiStoryBuilding(landmarkCtx, { x: 30, z: -150, w: 16, d: 13, floors: 11, style: 'glass', wallColor: 0x0f172a, accentColor: 0xf59e0b });
+  buildMultiStoryBuilding(landmarkCtx, { x: 90, z: -150, w: 16, d: 13, floors: 9, style: 'glass', wallColor: 0x1e293b, accentColor: 0x6366f1 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 150, z: -90, w: 16, d: 13, floors: 10, style: 'glass', wallColor: 0x0f172a, accentColor: 0x06b6d4 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 150, z: -150, w: 16, d: 13, floors: 8, style: 'concrete', wallColor: 0xf1f5f9, accentColor: 0x0284c7 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 90, z: 162, w: 15, d: 11, floors: 6, style: 'concrete', wallColor: 0xe2e8f0, accentColor: 0x0d9488 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 150, z: 150, w: 16, d: 12, floors: 7, style: 'brick', wallColor: 0xfff7ed, accentColor: 0xc2410c });
+
+  // --- NOVO BAIRRO 6: JARDIM DAS FLORES (Igreja #4 São Pedro, Biblioteca, Supermercado Oeste, Feira das Flores, Prédios & Casas) ---
+  buildChurchLandmark(landmarkCtx, {
+    id: 'igreja_jardim_flores',
+    name: 'Igreja São Pedro (Jardim das Flores)',
+    x: -150,
+    z: -150,
+    variant: 'jardim_flores',
+    rotY: 0,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'biblioteca_municipal',
+    name: 'Biblioteca & Centro Cultural',
+    category: 'landmark',
+    x: -210,
+    z: -90,
+    w: 18,
+    d: 14,
+    h: 6.8,
+    wallColor: 0xfef3c7,
+    roofColor: 0x7c2d12,
+    signTitle: 'BIBLIOTECA',
+    signSubtitle: 'JARDIM DAS FLORES',
+    signBg: 0x78350f,
+    hasColumns: true,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'supermercado_oeste',
+    name: 'Supermercado Jardim Oeste',
+    category: 'shop',
+    x: -210,
+    z: -150,
+    w: 18,
+    d: 14,
+    h: 6.0,
+    wallColor: 0xd1fae5,
+    roofColor: 0x065f46,
+    signTitle: 'SUPERMERCADO',
+    signSubtitle: 'JARDIM OESTE',
+    signBg: 0x059669,
+  });
+
+  buildFeiraLivre(landmarkCtx, -210, -30);
+
+  buildHouseVariant(landmarkCtx, { x: -210, z: 24, wallColor: 0xfde68a, roofColor: 0x991b1b, variant: 'quintal' });
+  buildHouseVariant(landmarkCtx, { x: -210, z: 42, wallColor: 0xe0e7ff, roofColor: 0x3730a3, variant: 'garagem' });
+  buildHouseVariant(landmarkCtx, { x: -210, z: -206, wallColor: 0xfce7f3, roofColor: 0xbe185d, variant: 'muro_colorido', fenceColor: 0x10b981 });
+
+  // Torres Residenciais da Zona Norte & Jardim das Flores (6 a 12 andares!)
+  buildMultiStoryBuilding(landmarkCtx, { x: -150, z: -210, w: 16, d: 13, floors: 8, style: 'brick', wallColor: 0xffedd5, accentColor: 0x9a3412 });
+  buildMultiStoryBuilding(landmarkCtx, { x: -90, z: -210, w: 16, d: 13, floors: 9, style: 'concrete', wallColor: 0xf1f5f9, accentColor: 0x2563eb });
+  buildMultiStoryBuilding(landmarkCtx, { x: -30, z: -210, w: 16, d: 13, floors: 11, style: 'glass', wallColor: 0x0f172a, accentColor: 0x0ea5e9 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 30, z: -210, w: 16, d: 13, floors: 12, style: 'glass', wallColor: 0x1e293b, accentColor: 0xfacc15 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 90, z: -210, w: 16, d: 13, floors: 10, style: 'concrete', wallColor: 0xe2e8f0, accentColor: 0x4f46e5 });
+  buildMultiStoryBuilding(landmarkCtx, { x: 150, z: -210, w: 16, d: 13, floors: 9, style: 'glass', wallColor: 0x1e293b, accentColor: 0xec4899 });
+
+  // --- NOVO BAIRRO 7: VILA ALEGRE SUL (Igreja #5 Capela Vila Alegre, Galeria Sul, Estádio Sul, Prédios & Casas) ---
+  buildChurchLandmark(landmarkCtx, {
+    id: 'igreja_vila_alegre',
+    name: 'Capela da Vila Alegre',
+    x: 90,
+    z: 210,
+    variant: 'vila_alegre',
+    rotY: Math.PI,
+  });
+
+  buildCivicOrShopBuilding(landmarkCtx, {
+    id: 'galeria_vila_alegre',
+    name: 'Galeria Popular Vila Alegre',
+    category: 'shop',
+    x: 30,
+    z: 210,
+    w: 20,
+    d: 14,
+    h: 6.4,
+    wallColor: 0xfef3c7,
+    roofColor: 0xb45309,
+    signTitle: 'GALERIA SUL',
+    signSubtitle: 'VILA ALEGRE • LOJAS',
+    signBg: 0xd97706,
+  });
+
+  buildPlaygroundAndCourtPark(landmarkCtx, -30, 210);
+
+  buildHouseVariant(landmarkCtx, { x: -210, z: 146, wallColor: 0xbbf7d0, roofColor: 0x166534, variant: 'quintal' });
+  buildHouseVariant(landmarkCtx, { x: -210, z: 208, wallColor: 0xfecdd3, roofColor: 0x9f1239, variant: 'garagem' });
+  buildHouseVariant(landmarkCtx, { x: -150, z: 208, wallColor: 0xfef08a, roofColor: 0x854d0e, variant: 'muro_colorido', fenceColor: 0x0284c7 });
+
+  // Prédios da Vila Alegre & Zona Sul (5 a 9 andares)
+  buildMultiStoryBuilding(landmarkCtx, { x: -90, z: 210, w: 16, d: 13, floors: 7, style: 'brick', wallColor: 0xfef2f2, accentColor: 0x991b1b });
+  buildMultiStoryBuilding(landmarkCtx, { x: 150, z: 210, w: 16, d: 13, floors: 8, style: 'glass', wallColor: 0x1e293b, accentColor: 0x10b981 });
+  buildMultiStoryBuilding(landmarkCtx, { x: -210, z: -190, w: 14, d: 12, floors: 6, style: 'concrete', wallColor: 0xe2e8f0, accentColor: 0x475569 });
+  buildMultiStoryBuilding(landmarkCtx, { x: -168, z: -210, w: 13, d: 12, floors: 7, style: 'brick', wallColor: 0xfff7ed, accentColor: 0xb45309 });
+
+  // Placas 3D com Nomes das Ruas Principais nos Cruzamentos
+  buildStreetNameSign(landmarkCtx, -7.2, -9.5, 'Avenida Central', 0);
+  buildStreetNameSign(landmarkCtx, -53.2, -9.5, 'Rua da Igreja', 0);
+  buildStreetNameSign(landmarkCtx, 53.2, -9.5, 'Rua do Shopping', 0);
+  buildStreetNameSign(landmarkCtx, 173.2, -9.5, 'Rua da Praia', 0);
+  buildStreetNameSign(landmarkCtx, -173.2, -9.5, 'Av. das Flores', 0);
+  buildStreetNameSign(landmarkCtx, 7.2, 52.5, 'Av. do Parque', Math.PI / 2);
+  buildStreetNameSign(landmarkCtx, 7.2, -172.5, 'Av. Horizonte Norte', Math.PI / 2);
+  buildStreetNameSign(landmarkCtx, 7.2, 172.5, 'Av. Vila Alegre', Math.PI / 2);
+
+  // Mobiliário Urbano no grupo LOD (Pontos de Ônibus, Lixeiras, Carrinhos de Supermercado)
+  buildBusStopAndStreetFurniture(
+    landmarkCtx,
+    [
+      [-7.5, 42, Math.PI / 2],
+      [7.5, -42, -Math.PI / 2],
+      [-53.0, -40, Math.PI / 2],
+      [67.0, -72, -Math.PI / 2],
+      [173.5, 16, -Math.PI / 2],
+      [-173.5, -135, Math.PI / 2],
+      [20.0, 187.5, 0],
+    ],
+    [
+      [-7.2, -16], [7.2, -16], [-7.2, 16], [7.2, 16],
+      [-26, 16], [36, 20], [74, -64], [-80, -66], [186, 0], [-196, -138], [80, 194],
+    ],
+    [
+      [-25, 17.5], [-23.5, 17.5], [-16, 17.5], [-14.5, 17.5], [-200, -142], [-198.5, -142],
+    ]
+  );
 
   // --- ÁRVORES COM CARA DE ÁRVORE (TRONCO MARROM + 2 VOLUMES VERDES DE TAMANHOS DIFERENTES + GALHOS + CANTEIRO) ---
   const trunkMat = new THREE.MeshStandardMaterial({
@@ -2052,32 +2500,35 @@ export function createCityScene(): CitySceneObjects {
     circleColliders.push({ x: px, z: pz, radius: 0.75, name: 'palm' });
   };
 
-  // Posicionamento das árvores no Parque, Ruas e Centro
+  // Posicionamento das árvores no Parque, Ruas e 7 Bairros (zero conflito com prédios e avenidas)
   const urbanTreePositions: [number, number, boolean][] = [
-    [-7.0, -22, false], [-7.0, 22, false], [-7.0, 48, false], 
-    [7.0, -22, false], [7.0, 22, false], [7.0, 48, false],
-    [-52, -6, false], [-52, 6, false], [50, -6, false], [50, 6, false], 
-    [22, 45, false], [38, 45, false],
-    [-72, -22, false], [-72, 22, false], [-22, -58, false], [22, -58, false],
-    // Praça & Parque Central com macieiras
-    [-24, -28, true], [-16, -34, false], [-30, -32, true], [-36, -24, false],
-    [-18, -12, false], [-32, -14, true]
+    [-7.0, -22, false], [-7.0, 22, false], [-7.0, 44, false],
+    [7.0, -22, false], [7.0, 44, false],
+    [-52, -7.2, false], [-52, 7.2, false], [52, -7.2, false], [52, 7.2, false],
+    [22, 44, false], [38, 44, false],
+    [-70, -46, false], [-108, -46, false], [-108, 46, false],
+    [68, 46, false], [108, 46, false], [68, 12, false], [108, 12, false],
+    [-20, 128, false], [-50, 128, false], [20, 128, false],
+    [-12, -32, true], [-32, -12, true], [-32, -34, false], [22, 16, true], [38, 16, false],
+    [-190, -14, true], [-228, -44, false], [-190, -130, false], [-132, -196, false],
+    [132, -196, false], [132, 132, false], [-16, 196, true], [-46, 224, false], [72, 196, false],
   ];
 
   urbanTreePositions.forEach(([tx, tz, hasApples]) => {
     createParkTree(tx, tz, hasApples);
   });
 
-  // Coqueiros na Praia (Lado leste / praia)
+  // Coqueiros na Orla da Praia (X = 188)
   const beachPalmPositions: [number, number][] = [
-    [70, -38], [70, -14], [70, 16], [70, 44], [78, 2], [76, -26], [82, 28]
+    [188, -220], [188, -176], [188, -132], [188, -88], [188, -44],
+    [188, 0], [188, 44], [188, 88], [188, 132], [188, 176], [188, 220],
   ];
 
   beachPalmPositions.forEach(([px, pz]) => {
     createPalmTree(px, pz);
   });
 
-  // --- BANCOS DE PRAÇA DE MADEIRA COM ESTRUTURA DE FERRO ---
+  // --- BANCOS DE PRAÇA DE MADEIRA COM ESTRUTURA DE FERRO (LOD detailGroup) ---
   const benchPositions = [
     [-12, -8.5, 0],
     [-24, -8.5, 0],
@@ -2087,6 +2538,8 @@ export function createCityScene(): CitySceneObjects {
     [12, 8.5, Math.PI],
     [26, 18, -Math.PI / 2],
     [34, 18, -Math.PI / 2],
+    [194, -24, -Math.PI / 2],
+    [194, 14, -Math.PI / 2],
   ];
 
   const benchWoodMat = new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.6 });
@@ -2097,7 +2550,6 @@ export function createCityScene(): CitySceneObjects {
     benchGroup.position.set(bx, 0.08, bz);
     benchGroup.rotation.y = rotY;
 
-    // Pernas de ferro
     for (const legX of [-0.9, 0.9]) {
       const legGeo = new THREE.BoxGeometry(0.08, 0.45, 0.45);
       const leg = new THREE.Mesh(legGeo, benchIronMat);
@@ -2106,7 +2558,6 @@ export function createCityScene(): CitySceneObjects {
       benchGroup.add(leg);
     }
 
-    // Réguas de madeira do assento
     for (let s = 0; s < 3; s++) {
       const slatGeo = new THREE.BoxGeometry(2.0, 0.04, 0.12);
       const slat = new THREE.Mesh(slatGeo, benchWoodMat);
@@ -2115,7 +2566,6 @@ export function createCityScene(): CitySceneObjects {
       benchGroup.add(slat);
     }
 
-    // Encosto de madeira
     for (let b = 0; b < 2; b++) {
       const backSlatGeo = new THREE.BoxGeometry(2.0, 0.12, 0.04);
       const backSlat = new THREE.Mesh(backSlatGeo, benchWoodMat);
@@ -2124,17 +2574,17 @@ export function createCityScene(): CitySceneObjects {
       benchGroup.add(backSlat);
     }
 
-    scene.add(benchGroup);
+    detailGroup.add(benchGroup);
   });
 
-  // --- HIDRANTES DE INCÊNDIO VERMELHOS CLÁSSICOS ---
+  // --- HIDRANTES DE INCÊNDIO VERMELHOS CLÁSSICOS (LOD detailGroup) ---
   const hydrantPositions = [
     [-7.5, -14],
     [7.5, -14],
     [-7.5, 14],
     [7.5, 14],
-    [-48, -7.5],
-    [48, -7.5],
+    [-52, -7.5],
+    [52, -7.5],
   ];
 
   const hydrantRedMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.3, roughness: 0.4 });
@@ -2155,7 +2605,6 @@ export function createCityScene(): CitySceneObjects {
     cap.position.y = 0.65;
     hydrant.add(cap);
 
-    // Bicos laterais cromados
     for (const side of [-1, 1]) {
       const nozzleGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.18, 10);
       nozzleGeo.rotateZ(Math.PI / 2);
@@ -2164,36 +2613,36 @@ export function createCityScene(): CitySceneObjects {
       hydrant.add(nozzle);
     }
 
-    scene.add(hydrant);
+    detailGroup.add(hydrant);
   });
 
-  // --- NUVENS 3D FOFAS FLUTUANTES NO CÉU ---
+  // --- NUVENS 3D FOFAS FLUTUANTES NO CÉU AMPLIADO ---
   const clouds: THREE.Group[] = [];
   const cloudMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.3,
     metalness: 0.05,
     transparent: true,
-    opacity: 0.92,
+    opacity: 0.9,
   });
 
-  for (let c = 0; c < 9; c++) {
+  for (let c = 0; c < 14; c++) {
     const cloud = new THREE.Group();
     cloud.position.set(
-      -120 + Math.random() * 240,
-      38 + Math.random() * 14,
-      -100 + Math.random() * 200
+      -260 + Math.random() * 520,
+      58 + Math.random() * 24,
+      -240 + Math.random() * 480
     );
 
-    // Aglomerado de 5 esferas volumosas formando uma nuvem
-    for (let p = 0; p < 5; p++) {
-      const radius = 3.5 + Math.random() * 3.5;
+    // Aglomerado de 4 esferas volumosas formando uma nuvem
+    for (let p = 0; p < 4; p++) {
+      const radius = 5.0 + Math.random() * 4.5;
       const puffGeo = new THREE.SphereGeometry(radius, 10, 10);
       const puff = new THREE.Mesh(puffGeo, cloudMat);
       puff.position.set(
-        (p - 2) * 3.8 + (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 1.5,
-        (Math.random() - 0.5) * 3
+        (p - 1.5) * 5.2 + (Math.random() - 0.5) * 2.5,
+        (Math.random() - 0.5) * 1.8,
+        (Math.random() - 0.5) * 4.0
       );
       cloud.add(puff);
     }
@@ -2203,27 +2652,34 @@ export function createCityScene(): CitySceneObjects {
   }
 
   // =========================================================================
-  // --- CARROS COLORIDOS REALISTAS COM PINTURA BRILHANTE E RODAS DETALHADAS ---
+  // --- CARROS COLORIDOS REALISTAS CIRCULANDO PELOS 7 BAIRROS ---
   // =========================================================================
   const routeCircuit1: THREE.Vector3[] = [
-    new THREE.Vector3(3.4, 0, -90),
-    new THREE.Vector3(3.4, 0, 90),
-    new THREE.Vector3(58, 0, 90),
-    new THREE.Vector3(58, 0, -90),
+    new THREE.Vector3(3.4, 0, -230),
+    new THREE.Vector3(3.4, 0, 230),
+    new THREE.Vector3(60, 0, 230),
+    new THREE.Vector3(60, 0, -230),
   ];
 
   const routeCircuit2: THREE.Vector3[] = [
-    new THREE.Vector3(-3.4, 0, 90),
-    new THREE.Vector3(-3.4, 0, -90),
-    new THREE.Vector3(-58, 0, -90),
-    new THREE.Vector3(-58, 0, 90),
+    new THREE.Vector3(-3.4, 0, 230),
+    new THREE.Vector3(-3.4, 0, -230),
+    new THREE.Vector3(-60, 0, -230),
+    new THREE.Vector3(-60, 0, 230),
   ];
 
   const routeCircuit3: THREE.Vector3[] = [
-    new THREE.Vector3(-90, 0, 3.4),
-    new THREE.Vector3(90, 0, 3.4),
-    new THREE.Vector3(90, 0, -52),
-    new THREE.Vector3(-90, 0, -52),
+    new THREE.Vector3(-230, 0, 3.4),
+    new THREE.Vector3(176, 0, 3.4),
+    new THREE.Vector3(176, 0, -60),
+    new THREE.Vector3(-230, 0, -60),
+  ];
+
+  const routeCircuit4: THREE.Vector3[] = [
+    new THREE.Vector3(-180, 0, -180),
+    new THREE.Vector3(120, 0, -180),
+    new THREE.Vector3(120, 0, 180),
+    new THREE.Vector3(-180, 0, 180),
   ];
 
   const carConfigs = [
@@ -2232,6 +2688,9 @@ export function createCityScene(): CitySceneObjects {
     { name: 'Van Vermelha', body: 0xdc2626, roof: 0xf8fafc, route: routeCircuit1, startWp: 2 },
     { name: 'Fusquinha Verde', body: 0x16a34a, roof: 0x15803d, route: routeCircuit2, startWp: 2 },
     { name: 'Picape Laranja', body: 0xf97316, roof: 0x431407, route: routeCircuit3, startWp: 0 },
+    { name: 'Sedã Prata Executivo', body: 0xcbd5e1, roof: 0x334155, route: routeCircuit4, startWp: 0 },
+    { name: 'SUV Roxo Aventura', body: 0x7c3aed, roof: 0x0f172a, route: routeCircuit4, startWp: 2 },
+    { name: 'Conversível Turquesa', body: 0x06b6d4, roof: 0xf8fafc, route: routeCircuit3, startWp: 2 },
   ];
 
   const cars: CityCar[] = [];
@@ -2804,7 +3263,7 @@ export function createCityScene(): CitySceneObjects {
         'Theo Lucca! Quando você cumpre as missões, a praia se expande com píer de barcos e calçadão novo!',
         'Oi Theo Lucca! Você pode pilotar motos e carros velozes direto pela areia da praia!'
       ],
-      pos: new THREE.Vector3(76, 0, -18),
+      pos: new THREE.Vector3(190, 0, -18),
       skinTone: 0xc68652,
       shirtColor: 0x06b6d4,
       pantsColor: 0xf8fafc,
@@ -2818,7 +3277,7 @@ export function createCityScene(): CitySceneObjects {
       phrase: 'Parabéns Theo Lucca! Continue sempre atravessando na faixa e dirigindo com segurança!', 
       tips: [
         'Atenção cidadão Theo Lucca! Dica de trânsito: respeite as faixas de pedestre e dirija com responsabilidade para ser o campeão da cidade!',
-        'Theo Lucca! A polícia da cidade informa: a cada missão concluída, novos bairros seguros são liberados!',
+        'Theo Lucca! A polícia da cidade informa: todos os 7 bairros da cidade estão protegidos e abertos!',
         'Grande motorista Theo Lucca! Lembre-se que você pode buzinar com a buzina fofa bi-bi nos carros!'
       ],
       pos: new THREE.Vector3(8.5, 0, 8.5),
@@ -2852,7 +3311,7 @@ export function createCityScene(): CitySceneObjects {
       phrase: 'Olá Theo Lucca! As caixas de correio estão prontas para as entregas de jornal!', 
       tips: [
         'Fala Theo Lucca! Dica de entregas: colocar os jornais nas caixas de correio rende R$ 25 rapidinho!',
-        'Theo Lucca! A cidade está crescendo tanto que agora temos muitas casas novas para entregar correspondências!',
+        'Theo Lucca! A cidade cresceu 3 vezes e agora temos muitas casas novas nos 7 bairros!',
         'E aí Theo Lucca! Pegue o carrinho veloz ou a moto para fazer as entregas voando baixo!'
       ],
       pos: new THREE.Vector3(-44, 0, -59),
@@ -2866,11 +3325,11 @@ export function createCityScene(): CitySceneObjects {
       name: 'Pedrinho', 
       role: 'Criança no Parque', 
       gender: 'male',
-      phrase: 'E aí Theo Lucca! Vamos apostar corrida até a nova avenida que acabou de abrir?', 
+      phrase: 'E aí Theo Lucca! Vamos apostar corrida pelos 7 bairros da nossa cidade gigante?', 
       tips: [
-        'E aí amigão Theo Lucca! Vamos apostar corrida até a nova avenida que acabou de se expandir?',
-        'Theo Lucca! Seu tênis vermelho com solado branco é o mais veloz do bairro!',
-        'Uau Theo Lucca! A cidade ficou muito maior depois que você cumpriu a missão!'
+        'E aí amigão Theo Lucca! Vamos apostar corrida até o Jardim das Flores ou Vila Alegre?',
+        'Theo Lucca! Seu tênis vermelho com solado branco é o mais veloz da cidade!',
+        'Uau Theo Lucca! A cidade está 3 vezes maior!'
       ],
       pos: new THREE.Vector3(-24, 0, 52),
       skinTone: 0xc68652,
@@ -2884,11 +3343,11 @@ export function createCityScene(): CitySceneObjects {
       name: 'Bia', 
       role: 'Amiguinha da Escola', 
       gender: 'female',
-      phrase: 'Oi Theo Lucca! Seu boné azul é super estiloso! A cidade tá cada vez mais linda!', 
+      phrase: 'Oi Theo Lucca! Seu boné azul é super estiloso! A cidade tá enorme e linda!', 
       tips: [
         'Oi Theo Lucca! Seu boné azul é super estiloso! Dica: você pode abrir a sua mochila amarela gigante a qualquer hora!',
         'Theo Lucca! Olhe o feixe de luz dourado no céu apontando onde você deve ir!',
-        'Eba Theo Lucca! Cada missão concluída desbloqueia um pedaço novo no mapa de navegação!'
+        'Eba Theo Lucca! Já visitou todas as 5 igrejas espalhadas pela cidade?'
       ],
       pos: new THREE.Vector3(-34, 0, 52),
       skinTone: 0xf6d8ae,
@@ -2905,15 +3364,126 @@ export function createCityScene(): CitySceneObjects {
       phrase: 'Oi amigão Theo Lucca! Muito obrigado pela entrega da pizza quentinha!', 
       tips: [
         'Oi amigão Theo Lucca! Obrigado pela entrega da pizza quentinha!',
-        'Theo Lucca! Dica de vizinho: junte R$ 30 e compre o carrinho dos sonhos para zerar as missões!',
+        'Theo Lucca! Explore todos os 7 bairros da nossa cidade de carro ou a pé!',
         'Parabéns Theo Lucca! Você é o orgulho do nosso bairro!'
       ],
-      pos: new THREE.Vector3(-32, 0, -59),
+      pos: new THREE.Vector3(-135, 0, -14),
       skinTone: 0xf6d8ae,
       shirtColor: 0x64748b,
       pantsColor: 0x1e293b,
       hairColor: 0x475569,
       hairStyle: 'fedora',
+    },
+    {
+      name: 'Padre Antônio',
+      role: 'Padre da Igreja Matriz',
+      gender: 'male',
+      phrase: 'A paz esteja com você, pequeno Theo Lucca! Seja sempre bondoso com todos os vizinhos!',
+      tips: [
+        'Que bênção receber você na Igreja Matriz, Theo Lucca! Que sua aventura pela cidade seja iluminada!',
+        'Theo Lucca, você também pode visitar as outras 4 igrejas nos bairros da cidade!',
+      ],
+      pos: new THREE.Vector3(4.5, 0, 16),
+      skinTone: 0xf6d8ae,
+      shirtColor: 0x0f172a,
+      pantsColor: 0x0f172a,
+      hairColor: 0x94a3b8,
+      hairStyle: 'shortHair',
+    },
+    {
+      name: 'Padre Lucas',
+      role: 'Padre do Jardim das Flores',
+      gender: 'male',
+      phrase: 'Seja bem-vindo à Igreja São Pedro no Jardim das Flores, Theo Lucca!',
+      tips: [
+        'Aqui no Jardim das Flores temos lindas torres gêmeas e uma biblioteca pertinho!',
+        'Que Deus abençoe seus passeios de bicicleta, moto e carro pela cidade, Theo Lucca!',
+      ],
+      pos: new THREE.Vector3(-150, 0, -138),
+      skinTone: 0xc68652,
+      shirtColor: 0x1e293b,
+      pantsColor: 0x0f172a,
+      hairColor: 0x22130b,
+      hairStyle: 'shortHair',
+    },
+    {
+      name: 'Irmã Clara',
+      role: 'Capela da Vila Alegre',
+      gender: 'female',
+      phrase: 'Oi Theo Lucca! Que alegria receber você na Capela da Vila Alegre aqui na Zona Sul!',
+      tips: [
+        'A Vila Alegre tem quadras, galeria de lojas e muitas casas bonitas!',
+        'Espalhe carinho e alegria por todos os 7 bairros da cidade!',
+      ],
+      pos: new THREE.Vector3(90, 0, 198),
+      skinTone: 0xf6d8ae,
+      shirtColor: 0x475569,
+      pantsColor: 0x1e293b,
+      hairColor: 0x3e1f07,
+      hairStyle: 'curlyBun',
+    },
+    {
+      name: 'Policial Marcos',
+      role: 'Policial da Delegacia',
+      gender: 'male',
+      phrase: 'Bem-vindo à Delegacia, Theo Lucca! Nossa cidade é segura e pacífica para você explorar!',
+      tips: [
+        'Excelente trabalho, Theo Lucca! Use sempre a faixa de pedestres e dirija com cuidado!',
+        'Aqui na Delegacia cuidamos de todos os 7 bairros com nossas viaturas!',
+      ],
+      pos: new THREE.Vector3(45, 0, 10),
+      skinTone: 0xc68652,
+      shirtColor: 0x1e3a8a,
+      pantsColor: 0x0f172a,
+      hairColor: 0x1e293b,
+      hairStyle: 'policeCap',
+    },
+    {
+      name: 'Professora Ana',
+      role: 'Professora da Escola',
+      gender: 'female',
+      phrase: 'Oi Theo Lucca! A Escola Municipal está sempre de portas abertas para você aprender e brincar!',
+      tips: [
+        'Que alegria ver você na Escola do Bairro Alto, Theo Lucca!',
+        'Depois da aula você pode jogar futebol no campinho aqui perto!',
+      ],
+      pos: new THREE.Vector3(-90, 0, -78),
+      skinTone: 0xe0ac69,
+      shirtColor: 0x0284c7,
+      pantsColor: 0x1e293b,
+      hairColor: 0x3e1f07,
+      hairStyle: 'longWavy',
+    },
+    {
+      name: 'Dra. Camila',
+      role: 'Médica do Hospital',
+      gender: 'female',
+      phrase: 'Oi Theo Lucca! Aqui no Hospital 24h cuidamos da saúde de toda a cidade!',
+      tips: [
+        'Beba bastante água e coma frutas do mercado para manter sua energia lá em cima!',
+        'Nossa ambulância está pronta para ajudar em qualquer bairro!',
+      ],
+      pos: new THREE.Vector3(90, 0, -18),
+      skinTone: 0xf6d8ae,
+      shirtColor: 0xffffff,
+      pantsColor: 0x38bdf8,
+      hairColor: 0x1e293b,
+      hairStyle: 'curlyBun',
+    },
+    {
+      name: 'Bombeiro Rafael',
+      role: 'Corpo de Bombeiros',
+      gender: 'male',
+      phrase: 'Olá campeão Theo Lucca! Aqui no Quartel dos Bombeiros protegemos os 7 bairros com nosso caminhão vermelho!',
+      tips: [
+        'Segurança em primeiro lugar, Theo Lucca! Explore toda a cidade sem medo!',
+      ],
+      pos: new THREE.Vector3(150, 0, -18),
+      skinTone: 0xc68652,
+      shirtColor: 0xdc2626,
+      pantsColor: 0x1e293b,
+      hairColor: 0x1e293b,
+      hairStyle: 'shortHair',
     },
   ];
 
@@ -3117,7 +3687,7 @@ export function createCityScene(): CitySceneObjects {
       speed: 1.2,
     },
     'Marina': {
-      waypoints: [new THREE.Vector3(76, 0, -18), new THREE.Vector3(78, 0, -38), new THREE.Vector3(78, 0, -5), new THREE.Vector3(75, 0, 12), new THREE.Vector3(74, 0, -8)],
+      waypoints: [new THREE.Vector3(190, 0, -18), new THREE.Vector3(190, 0, -68), new THREE.Vector3(190, 0, 35), new THREE.Vector3(190, 0, 80)],
       speed: 1.45,
     },
     'Policial Amigo': {
@@ -3141,7 +3711,7 @@ export function createCityScene(): CitySceneObjects {
       speed: 1.75,
     },
     'Sr. João': {
-      waypoints: [new THREE.Vector3(-32, 0, -59), new THREE.Vector3(-15, 0, -59), new THREE.Vector3(-15, 0, -68), new THREE.Vector3(-32, 0, -68)],
+      waypoints: [new THREE.Vector3(-135, 0, -14), new THREE.Vector3(-110, 0, -14), new THREE.Vector3(-110, 0, -35), new THREE.Vector3(-135, 0, -35)],
       speed: 1.25,
     },
   };
@@ -3181,7 +3751,7 @@ export function createCityScene(): CitySceneObjects {
     });
   });
 
-  // --- 30 MOEDINHAS DOURADAS BRILHANTES ---
+  // --- 42 MOEDINHAS DOURADAS BRILHANTES PELOS 7 BAIRROS ---
   const coins: StreetCoin[] = [];
   const coinGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.07, 16);
   coinGeo.rotateZ(Math.PI / 2);
@@ -3196,14 +3766,17 @@ export function createCityScene(): CitySceneObjects {
   const coinCoords = [
     [0, -18], [0, 18], [0, 38], [0, -38],
     [-14, 0], [14, 0], [-38, 0], [38, 0],
-    [-20, -20], [-20, -28], // Dentro da Pizzaria
-    [-42, -20], [-42, -28], // Dentro da Padaria
-    [-20, 30], [-20, 24],   // Dentro do Mercado
-    [-45, 30], [-45, 24],   // Dentro da Loja de Brinquedos
-    [28, -24], [28, -30],   // Dentro da Loja de Roupas
-    [30, 24], [34, 30], [26, 32], // Na Praça da Fonte
-    [-38, -60], [-48, -60], // No Bairro Residencial
-    [75, -12], [75, 12], [86, -22], [86, 22], // Na Praia
+    [-20, -20], [-20, -28],
+    [-42, -20], [-42, -28],
+    [-20, 30], [-20, 24],
+    [-45, 30], [-45, 24],
+    [28, -24], [28, -30],
+    [30, 24], [34, 30], [26, 32],
+    [-38, -60], [-48, -60],
+    [90, -72], [90, -110], [150, -60], [150, 0],
+    [-90, -22], [-150, -135], [-210, -135], [-210, -30],
+    [-90, 140], [-30, 140], [30, 200], [90, 198], [150, 195],
+    [192, -60], [192, 0], [192, 60], [0, -180], [0, 180], [120, 0],
   ];
 
   coinCoords.forEach(([cx, cz], i) => {
@@ -3245,342 +3818,177 @@ export function createCityScene(): CitySceneObjects {
   };
 
   // =========================================================================
-  // --- SISTEMA DE EXPANSÃO DINÂMICA DA CIDADE (5 NÍVEIS / BAIRROS) ---
+  // --- TODOS OS 7 BAIRROS ABERTOS DESDE O INÍCIO + MARINA + ESTÁDIO + ARCO ---
   // =========================================================================
-  let currentExpansionLevel = 1;
+  let currentExpansionLevel = 7;
 
-  // 1. DISTRITO 2: BAIRRO COMERCIAL & SHOPPING CENTER (Desbloqueado após Missão 1)
-  const district2Group = new THREE.Group();
-  district2Group.visible = false;
-  scene.add(district2Group);
+  // Estádio / Campinho de Futebol & Quadra de Basquete no Bairro Alto (-90, 26) & (-150, 26)
+  const stadiumGroup = new THREE.Group();
+  scene.add(stadiumGroup);
 
-  const shopCenterMat = new THREE.MeshStandardMaterial({ color: 0x4f46e5, roughness: 0.35, metalness: 0.2 });
-  const shopGlassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.75 });
-
-  const shopMain = new THREE.Mesh(new THREE.BoxGeometry(26, 14, 18), shopCenterMat);
-  shopMain.position.set(58, 7, 44);
-  shopMain.castShadow = true;
-  shopMain.receiveShadow = true;
-  district2Group.add(shopMain);
-
-  const shopGlass = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 0.4), shopGlassMat);
-  shopGlass.position.set(58, 6, 34.8);
-  district2Group.add(shopGlass);
-
-  const marquee = new THREE.Mesh(
-    new THREE.BoxGeometry(24, 2.5, 1.2),
-    new THREE.MeshStandardMaterial({ color: 0x1e1b4b, emissive: 0x4338ca, emissiveIntensity: 0.4 })
-  );
-  marquee.position.set(58, 13.5, 35.2);
-  district2Group.add(marquee);
-
-  const letters = ['S', 'H', 'O', 'P', 'P', 'I', 'N', 'G', ' ', 'T', 'H', 'E', 'O'];
-  letters.forEach((char, idx) => {
-    if (char === ' ') return;
-    const block = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 1.4, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.8 })
-    );
-    block.position.set(50 + idx * 1.4, 13.5, 35.8);
-    district2Group.add(block);
-  });
-
-  const iceShop = new THREE.Mesh(new THREE.BoxGeometry(7, 4.5, 6), new THREE.MeshStandardMaterial({ color: 0xf472b6 }));
-  iceShop.position.set(78, 2.25, 38);
-  iceShop.castShadow = true;
-  district2Group.add(iceShop);
-
-  const iceCone = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3, 12), new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.6 }));
-  iceCone.position.set(78, 5.8, 38);
-  iceCone.rotation.x = Math.PI;
-  district2Group.add(iceCone);
-
-  const iceScoop = new THREE.Mesh(new THREE.SphereGeometry(1.4, 12, 12), new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.4 }));
-  iceScoop.position.set(78, 6.2, 38);
-  district2Group.add(iceScoop);
-
-  for (let p = 0; p < 8; p++) {
-    const palmX = 46 + (p % 4) * 9;
-    const palmZ = 24 + Math.floor(p / 4) * 32;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.35, 7, 8), new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 }));
-    trunk.position.set(palmX, 3.5, palmZ);
-    trunk.castShadow = true;
-    district2Group.add(trunk);
-
-    const leaves = new THREE.Mesh(new THREE.ConeGeometry(2.8, 1.6, 8), new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 }));
-    leaves.position.set(palmX, 7.2, palmZ);
-    district2Group.add(leaves);
-  }
-
-  // 2. DISTRITO 3: COMPLEXO ESPORTIVO & ACADEMIA DO PERSONAL INHO (Desbloqueado após Missão 2)
-  const district3Group = new THREE.Group();
-  district3Group.visible = false;
-  scene.add(district3Group);
-
-  const pitchGeo = new THREE.PlaneGeometry(36, 24);
+  const pitchGeo = new THREE.PlaneGeometry(34, 22);
   pitchGeo.rotateX(-Math.PI / 2);
   const pitch = new THREE.Mesh(pitchGeo, new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.7 }));
-  pitch.position.set(-72, 0.02, 20);
+  pitch.position.set(-90, 0.025, 24);
   pitch.receiveShadow = true;
-  district3Group.add(pitch);
+  stadiumGroup.add(pitch);
+
+  const fieldBorder = new THREE.Mesh(new THREE.PlaneGeometry(30, 0.25), whitePaintMat);
+  fieldBorder.rotateX(-Math.PI / 2);
+  fieldBorder.position.set(-90, 0.032, 14);
+  stadiumGroup.add(fieldBorder);
+  const fieldBorder2 = fieldBorder.clone();
+  fieldBorder2.position.set(-90, 0.032, 34);
+  stadiumGroup.add(fieldBorder2);
 
   for (const side of [-1, 1]) {
-    const goalX = -72 + side * 17.5;
+    const goalX = -90 + side * 15.5;
     const postMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
     const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 5, 8), postMat);
     crossbar.rotation.x = Math.PI / 2;
-    crossbar.position.set(goalX, 2.2, 20);
-    district3Group.add(crossbar);
+    crossbar.position.set(goalX, 2.2, 24);
+    stadiumGroup.add(crossbar);
 
     for (const postZ of [-2.5, 2.5]) {
       const vPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.2, 8), postMat);
-      vPost.position.set(goalX, 1.1, 20 + postZ);
-      district3Group.add(vPost);
+      vPost.position.set(goalX, 1.1, 24 + postZ);
+      stadiumGroup.add(vPost);
     }
   }
 
   const bleachers = new THREE.Mesh(
-    new THREE.BoxGeometry(32, 3.5, 4),
+    new THREE.BoxGeometry(30, 3.2, 4),
     new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.6 })
   );
-  bleachers.position.set(-72, 1.75, 34);
+  bleachers.position.set(-90, 1.6, 38);
   bleachers.castShadow = true;
-  district3Group.add(bleachers);
+  stadiumGroup.add(bleachers);
+  boxColliders.push({ minX: -105, maxX: -75, minZ: 35.8, maxZ: 40.2, name: 'Estádio Arquibancada' });
 
-  const gymFloor = new THREE.Mesh(
-    new THREE.PlaneGeometry(18, 14),
-    new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.8 })
+  // Quadra de Basquete ao lado do Campinho no Bairro Alto (-150, 26)
+  const bCourt = new THREE.Mesh(
+    new THREE.BoxGeometry(24, 0.08, 15),
+    new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.7 })
   );
-  gymFloor.rotateX(-Math.PI / 2);
-  gymFloor.position.set(-68, 0.025, -6);
-  district3Group.add(gymFloor);
-
-  const gymBanner = new THREE.Mesh(
-    new THREE.BoxGeometry(14, 2.2, 0.4),
-    new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x0284c7, emissiveIntensity: 0.5 })
-  );
-  gymBanner.position.set(-68, 3.8, 0.5);
-  district3Group.add(gymBanner);
-
-  const rackMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.2 });
-  for (let r = 0; r < 3; r++) {
-    const rx = -74 + r * 6;
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.5, 8), rackMat);
-    bar.rotation.z = Math.PI / 2;
-    bar.position.set(rx, 2.4, -6);
-    district3Group.add(bar);
-
-    const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 8), rackMat);
-    leg1.position.set(rx - 1.7, 1.2, -6);
-    district3Group.add(leg1);
-
-    const leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 8), rackMat);
-    leg2.position.set(rx + 1.7, 1.2, -6);
-    district3Group.add(leg2);
+  bCourt.position.set(-150, 0.04, 26);
+  bCourt.receiveShadow = true;
+  stadiumGroup.add(bCourt);
+  for (const s of [-1, 1]) {
+    const hp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 3.8, 8), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+    hp.position.set(-150 + s * 10.5, 1.9, 26);
+    stadiumGroup.add(hp);
+    const bd = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.3, 2.0), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+    bd.position.set(-150 + s * 10.0, 3.6, 26);
+    stadiumGroup.add(bd);
   }
 
-  // 3. DISTRITO 4: GRANDE ORLA MARÍTIMA & MARINA DOS BARCOS (Desbloqueado após Missão 3)
-  const district4Group = new THREE.Group();
-  district4Group.visible = false;
-  scene.add(district4Group);
+  // Orla Marítima Expandida (X = 191..295): Píer de madeira avançando no Mar, Iate & Quiosques de Praia
+  const marinaGroup = new THREE.Group();
+  scene.add(marinaGroup);
 
   const pierMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.85 });
-  const pier = new THREE.Mesh(new THREE.BoxGeometry(10, 0.6, 32), pierMat);
-  pier.position.set(92, 0.4, -38);
+  const pier = new THREE.Mesh(new THREE.BoxGeometry(44, 0.6, 9), pierMat);
+  pier.position.set(224, 0.45, -24);
   pier.castShadow = true;
   pier.receiveShadow = true;
-  district4Group.add(pier);
+  marinaGroup.add(pier);
 
-  for (let pil = 0; pil < 6; pil++) {
-    const pilZ = -50 + pil * 5;
-    for (const pilX of [88, 96]) {
+  for (let pil = 0; pil < 7; pil++) {
+    const pilX = 206 + pil * 5.8;
+    for (const pilZ of [-27.5, -20.5]) {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.2, 8), pierMat);
       post.position.set(pilX, -0.6, pilZ);
-      district4Group.add(post);
+      marinaGroup.add(post);
     }
   }
 
   const yachtGroup = new THREE.Group();
-  yachtGroup.position.set(104, 0.2, -42);
+  yachtGroup.position.set(248, 0.2, -44);
   const hull = new THREE.Mesh(
-    new THREE.BoxGeometry(5.5, 1.8, 14),
+    new THREE.BoxGeometry(16, 2.0, 6.0),
     new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.3 })
   );
   hull.position.y = 0.5;
   hull.castShadow = true;
   yachtGroup.add(hull);
-
   const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(4.2, 2.2, 7.5),
+    new THREE.BoxGeometry(8.5, 2.4, 4.5),
     new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.6 })
   );
-  cabin.position.set(0, 2.1, -1);
+  cabin.position.set(-1, 2.2, 0);
   yachtGroup.add(cabin);
+  marinaGroup.add(yachtGroup);
 
-  const flag = new THREE.Mesh(
-    new THREE.BoxGeometry(0.1, 1.2, 1.8),
-    new THREE.MeshStandardMaterial({ color: 0x16a34a, emissive: 0xfacc15, emissiveIntensity: 0.3 })
-  );
-  flag.position.set(0, 3.8, -4.5);
-  yachtGroup.add(flag);
-  district4Group.add(yachtGroup);
-
-  for (let k = 0; k < 2; k++) {
-    const kZ = -18 + k * 22;
+  for (let k = 0; k < 5; k++) {
+    const kZ = -120 + k * 60;
     const base = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 2.8, 12), new THREE.MeshStandardMaterial({ color: 0xffedd5 }));
-    base.position.set(80, 1.4, kZ);
+    base.position.set(202, 1.4, kZ);
     base.castShadow = true;
-    district4Group.add(base);
+    marinaGroup.add(base);
 
     const roof = new THREE.Mesh(new THREE.ConeGeometry(3.6, 1.8, 12), new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 }));
-    roof.position.set(80, 3.4, kZ);
-    district4Group.add(roof);
+    roof.position.set(202, 3.4, kZ);
+    marinaGroup.add(roof);
   }
 
-  // 4. DISTRITO 5: GRANDE METRÓPOLE & TORRES DOS CAMPEÕES (Desbloqueado após Missão 4 e 5)
-  const district5Group = new THREE.Group();
-  district5Group.visible = false;
-  scene.add(district5Group);
-
-  const tower = new THREE.Mesh(
-    new THREE.BoxGeometry(20, 48, 18),
-    new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.15, metalness: 0.85 })
-  );
-  tower.position.set(-8, 24, -86);
-  tower.castShadow = true;
-  tower.receiveShadow = true;
-  district5Group.add(tower);
-
-  const heliPad = new THREE.Mesh(
-    new THREE.CylinderGeometry(6, 6, 0.4, 16),
-    new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 })
-  );
-  heliPad.position.set(-8, 48.2, -86);
-  district5Group.add(heliPad);
-
-  const heliH = new THREE.Mesh(
-    new THREE.BoxGeometry(3.5, 0.1, 3.5),
-    new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.8 })
-  );
-  heliH.position.set(-8, 48.45, -86);
-  district5Group.add(heliH);
-
-  const antenna = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.12, 0.22, 10, 8),
-    new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 })
-  );
-  antenna.position.set(-8, 53, -86);
-  district5Group.add(antenna);
-
-  const beaconLight = new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 1.5 })
-  );
-  beaconLight.position.set(-8, 58, -86);
-  district5Group.add(beaconLight);
-
+  // Grande Arco Dourado Theo Lucca na Av. Central Norte
   const archMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.85, roughness: 0.25 });
-  const archLeft = new THREE.Mesh(new THREE.BoxGeometry(2.5, 14, 2.5), archMat);
-  archLeft.position.set(-16, 7, -62);
-  district5Group.add(archLeft);
+  const archLeft = new THREE.Mesh(new THREE.BoxGeometry(2.2, 13, 2.2), archMat);
+  archLeft.position.set(-8.5, 6.5, -62);
+  scene.add(archLeft);
+  const archRight = new THREE.Mesh(new THREE.BoxGeometry(2.2, 13, 2.2), archMat);
+  archRight.position.set(8.5, 6.5, -62);
+  scene.add(archRight);
+  const archTop = new THREE.Mesh(new THREE.BoxGeometry(19.5, 2.6, 2.6), archMat);
+  archTop.position.set(0, 13, -62);
+  scene.add(archTop);
 
-  const archRight = new THREE.Mesh(new THREE.BoxGeometry(2.5, 14, 2.5), archMat);
-  archRight.position.set(16, 7, -62);
-  district5Group.add(archRight);
-
-  const archTop = new THREE.Mesh(new THREE.BoxGeometry(34.5, 3.2, 3), archMat);
-  archTop.position.set(0, 14, -62);
-  district5Group.add(archTop);
-
-  const laserBeam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3, 2.5, 90, 16),
-    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 1.5, transparent: true, opacity: 0.65 })
-  );
-  laserBeam.position.set(0, 45, -62);
-  district5Group.add(laserBeam);
-
-  // Adiciona novos pontos interativos nos distritos
+  // Pontos interativos adicionais nos bairros
   locations.push({
-    id: 'shopping_theo',
-    name: 'Shopping Theo Lucca',
-    category: 'shop',
-    position: new THREE.Vector3(58, 0, 36),
-    markerMesh: new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.1, 16), yellowPaintMat),
-    label: 'Shopping Center',
-    radius: 4.5,
-    isInside: false,
-  });
-
-  locations.push({
-    id: 'academia_personal',
-    name: 'Academia do Personal Inho',
+    id: 'estadio_bairro_alto',
+    name: 'Campinho & Quadras Bairro Alto',
     category: 'landmark',
-    position: new THREE.Vector3(-68, 0, -6),
-    markerMesh: new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.1, 16), yellowPaintMat),
-    label: 'Academia & Estádio',
+    position: new THREE.Vector3(-90, 0, 14),
+    markerMesh: new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.1, 16), yellowPaintMat),
+    label: 'Estádio Bairro Alto',
     radius: 4.5,
     isInside: false,
   });
 
   locations.push({
     id: 'pier_marina',
-    name: 'Píer & Marina da Praia',
+    name: 'Píer & Orla da Praia',
     category: 'landmark',
-    position: new THREE.Vector3(92, 0, -32),
-    markerMesh: new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.1, 16), yellowPaintMat),
-    label: 'Marina da Praia',
+    position: new THREE.Vector3(204, 0, -24),
+    markerMesh: new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.1, 16), yellowPaintMat),
+    label: 'Píer da Praia',
     radius: 4.5,
     isInside: false,
   });
 
-  locations.push({
-    id: 'torre_campeoes',
-    name: 'Torre dos Campeões',
-    category: 'landmark',
-    position: new THREE.Vector3(-8, 0, -74),
-    markerMesh: new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.1, 16), yellowPaintMat),
-    label: 'Grande Metrópole',
-    radius: 4.5,
-    isInside: false,
-  });
-
-  // Função para expandir a cidade a cada missão
   const expandCity = (newLevel: number) => {
-    currentExpansionLevel = Math.max(currentExpansionLevel, Math.min(5, newLevel));
-
-    if (currentExpansionLevel >= 2) {
-      district2Group.visible = true;
-      boxColliders.push({ minX: 44, maxX: 72, minZ: 34, maxZ: 54, name: 'Shopping Theo Lucca' });
-    }
-    if (currentExpansionLevel >= 3) {
-      district3Group.visible = true;
-      boxColliders.push({ minX: -89, maxX: -55, minZ: 10, maxZ: 38, name: 'Estádio de Futebol' });
-    }
-    if (currentExpansionLevel >= 4) {
-      district4Group.visible = true;
-      boxColliders.push({ minX: 86, maxX: 98, minZ: -54, maxZ: -22, name: 'Píer da Marina' });
-    }
-    if (currentExpansionLevel >= 5) {
-      district5Group.visible = true;
-      boxColliders.push({ minX: -19, maxX: 3, minZ: -96, maxZ: -76, name: 'Sky Tower Metrópole' });
-    }
+    currentExpansionLevel = Math.max(currentExpansionLevel, Math.min(7, newLevel));
 
     const districtNames = [
       '',
-      'Bairro da Oficina & Praça Central',
-      'Bairro Comercial & Shopping Center',
-      'Complexo Esportivo & Academia do Personal Inho',
-      'Orla Marítima & Marina dos Barcos',
-      'Grande Metrópole & Torres dos Campeões',
+      'Centro Histórico & Praça Central',
+      'Bairro Alto & Complexo Escolar',
+      'Bairro Baixo & Comércio Local',
+      'Praia / Orla Marítima & Píer',
+      'Bairro Novo, Shopping & Hospital',
+      'Jardim das Flores & Igreja São Pedro',
+      'Vila Alegre Sul & Cidade Gigante 3x',
     ];
 
     const districtDescs = [
       '',
-      'Bairro inicial aberto para exploração!',
-      'Shopping Center Theo Lucca, Sorveteria Tropical e Praça das Palmeiras desbloqueados!',
-      'Mini Estádio de Futebol e Academia ao Ar Livre do Personal Inho liberados!',
-      'Píer Marítimo de madeira, Marina dos Barcos e quiosques tropicais abertos!',
-      'Arranha-Céus gigantes espelhados, Heliponto e Grande Arco Dourado Theo Lucca iluminados!',
+      'Centro com Igreja Matriz, Delegacia e Prefeitura!',
+      'Bairro Alto com Igreja Branca, Escola, Creche e Estádio!',
+      'Bairro Baixo com Igrejinha Colorida, Mercadinho e Lan House!',
+      'Praia com Calçadão, Quiosques, Píer e Hotel Beira-Mar!',
+      'Bairro Novo com Shopping Center, Hospital, Bombeiros e Torres!',
+      'Jardim das Flores com Igreja São Pedro, Biblioteca e Supermercado!',
+      'Vila Alegre Sul com Capela, Galeria Sul, Parque e Torres!',
     ];
 
     return {
@@ -3827,8 +4235,8 @@ export function createCityScene(): CitySceneObjects {
     // 6. Movimento das nuvens no céu
     for (const cl of clouds) {
       cl.position.x += delta * 1.2;
-      if (cl.position.x > 130) {
-        cl.position.x = -130;
+      if (cl.position.x > 260) {
+        cl.position.x = -280;
       }
     }
 
@@ -3919,5 +4327,6 @@ export function createCityScene(): CitySceneObjects {
     expandCity,
     streetLamps,
     setStreetLights,
+    setCameraDistanceLOD,
   };
 }

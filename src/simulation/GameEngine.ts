@@ -88,6 +88,9 @@ export interface CityHUDState {
   graphicQuality: 'baixo' | 'medio' | 'alto';
   isCarDented?: boolean;
   cameraZoom?: number;
+  cameraPreset?: 'city' | 'district' | 'street' | 'third_person';
+  isCameraPanned?: boolean;
+  dayCycleDurationSeconds?: number;
   characterCustomization: CharacterCustomization;
   characterName: string;
   // Sistema Completo de Economia & Construção
@@ -132,7 +135,7 @@ export class GameEngine {
   private isRunningInput = false;
 
   private moveInput = new THREE.Vector2(0, 0);
-  private cameraAngles = { yaw: Math.PI * 0.75, pitch: 0.28 };
+  private cameraAngles = { yaw: Math.PI * 0.78, pitch: 1.12 };
 
   // Sistema de Dinheiro & Inventário
   private money = 3.00;
@@ -144,13 +147,13 @@ export class GameEngine {
   private pizzaDeliveriesCount = 0;
   private jobsFinishedCount = 0;
 
-  // 5 Missões Principais da Cidade
+  // 5 Missões Principais da Cidade Aberta
   private missions: MainMission[] = [
-    { id: 1, title: 'Missão 1: Primeiro Trabalho', description: 'Trabalhe 1 vez e ganhe seus primeiros R$ 20!', reward: 15, progress: 0, total: 1, completed: false },
-    { id: 2, title: 'Missão 2: Caça às Moedas', description: 'Colete 10 moedinhas douradas pela cidade!', reward: 25, progress: 0, total: 10, completed: false },
-    { id: 3, title: 'Missão 3: Bola de Futebol', description: 'Compre uma bola na Loja de Brinquedos!', reward: 20, progress: 0, total: 1, completed: false },
-    { id: 4, title: 'Missão 4: Mestre da Pizza', description: 'Entregue 3 pizzas para os moradores do bairro!', reward: 50, progress: 0, total: 3, completed: false },
-    { id: 5, title: 'Missão 5: Carrinho dos Sonhos', description: 'Junte dinheiro e compre o Carrinho de Brinquedo!', reward: 80, progress: 0, total: 1, completed: false },
+    { id: 1, title: 'Missão 1: Fale com o Padre', description: 'Vá até a Igreja Matriz no Centro e fale com o Padre Antônio!', reward: 20, progress: 0, total: 1, completed: false },
+    { id: 2, title: 'Missão 2: Fale com o Policial', description: 'Vá à Delegacia de Polícia e converse com o Policial Marcos!', reward: 25, progress: 0, total: 1, completed: false },
+    { id: 3, title: 'Missão 3: Compras no Mercado', description: 'Visite o Mercadinho/Supermercado ou compre um item na Loja!', reward: 30, progress: 0, total: 1, completed: false },
+    { id: 4, title: 'Missão 4: Passeio no Shopping', description: 'Explore o Shopping Center luminoso no Bairro Novo!', reward: 40, progress: 0, total: 1, completed: false },
+    { id: 5, title: 'Missão 5: Explorador da Cidade', description: 'Colete 8 moedinhas douradas pelos bairros!', reward: 60, progress: 0, total: 8, completed: false },
   ];
   private currentMissionIndex = 0;
 
@@ -178,7 +181,7 @@ export class GameEngine {
   private weatherManager!: WeatherManager;
   private dayTimeHours = 10.0; // Inicia às 10:00 da manhã
   private targetDayTimeHours: number | null = null;
-  private readonly fullDayCycleSeconds = 180; // Ciclo completo de 24h a cada 3 minutos
+  private fullDayCycleSeconds = 720; // Ciclo completo de 24h a cada 12 minutos (dia e noite bem mais longos)
   private lastDayPhase: 'dawn' | 'day' | 'sunset' | 'night' = 'day';
   private dayCycleLighting: DayCycleLighting = {
     skyColor: new THREE.Color(0x60a5fa),
@@ -194,8 +197,8 @@ export class GameEngine {
   };
   private dayCycleExposure = 1.15;
 
-  // Sistema de Expansão Dinâmica da Cidade
-  private cityExpansionLevel = 1;
+  // Sistema de Expansão Dinâmica da Cidade (Todos os 7 Bairros conectados desde o início)
+  private cityExpansionLevel = 7;
   private expansionAnnouncement: { name: string; desc: string } | null = null;
   private customGPSDestination: { x: number; z: number; name: string } | null = null;
 
@@ -210,11 +213,18 @@ export class GameEngine {
   // Modo de Desempenho (BAIXO 60 FPS / MÉDIO Balanceado / ALTO Ultra Godot/GTA)
   private performanceMode: 'baixo' | 'medio' | 'alto' = 'baixo';
 
-  // Sistema de Câmera Livre & Zoom (Mouse Wheel, Pinch e Botões)
-  private cameraZoom = 1.0;
+  // Sistema de Câmera Livre & Zoom (Começa bem no alto vendo a Cidade Gigante 3x com 7 Bairros de cima)
+  private cameraZoom = 96.0;
+  private cameraPreset: 'city' | 'district' | 'street' | 'third_person' = 'city';
+  private targetCameraZoom: number | null = null;
+  private targetAerialPitch: number | null = null;
+  private targetCameraYaw: number | null = null;
+  private cameraPanOffset = new THREE.Vector3(14, 0, 14);
+  private targetCameraPanOffset: THREE.Vector3 | null = null;
   private cameraShake = 0;
   private touchPinchStartDist = 0;
-  private initialPinchZoom = 1.0;
+  private initialPinchZoom = 96.0;
+  private touchPinchLastMid: { x: number; y: number } | null = null;
 
   // Loop & mobile/software GL guard
   private isMobileDevice = false;
@@ -263,6 +273,11 @@ export class GameEngine {
       this.performanceMode = 'alto';
     } else {
       this.performanceMode = 'baixo';
+    }
+
+    const savedCycleSec = Number(safeGetItem('theo_lucca_day_cycle_sec'));
+    if (Number.isFinite(savedCycleSec) && savedCycleSec >= 120 && savedCycleSec <= 3600) {
+      this.fullDayCycleSeconds = savedCycleSec;
     }
 
     // Cria o renderer diretamente (evita criar/perder um 2º contexto WebGL no Android) com fallback seguro
@@ -317,12 +332,12 @@ export class GameEngine {
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost, false);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored, false);
 
-    // Camera com alcance dinâmico para culling
+    // Camera com alcance dinâmico para culling na Cidade Gigante 3x
     this.camera = new THREE.PerspectiveCamera(
       58,
       width / height,
       0.1,
-      this.performanceMode === 'baixo' ? 145 : this.performanceMode === 'medio' ? 195 : 250
+      this.performanceMode === 'baixo' ? 680 : this.performanceMode === 'medio' ? 780 : 900
     );
 
     this.cityScene = createCityScene();
@@ -398,14 +413,14 @@ export class GameEngine {
     this.player.root.rotation.y = this.playerRotationY;
     this.player.applyCustomization(this.characterCustomization);
     this.cityScene.scene.add(this.player.root);
-    // Sinaliza o primeiro objetivo de missão no mundo 3D (Oficina Mecânica)
-    this.cityScene.setBeaconPosition(new THREE.Vector3(32, 0, -24));
+    // Sinaliza o primeiro objetivo de missão no mundo 3D (Igreja Matriz no Centro)
+    this.cityScene.setBeaconPosition(new THREE.Vector3(4.5, 0, 16));
 
-    // Posiciona a câmera imediatamente atrás do Theo no primeiro frame
-    this.updateCamera(10);
-
-    // Aplica as diretrizes de desempenho
+    // Aplica as diretrizes de desempenho antes do primeiro posicionamento da câmera
     this.applyPerformanceSettings(this.performanceMode);
+
+    // Posiciona a câmera imediatamente na vista aérea completa no primeiro frame
+    this.updateCamera(10);
 
     if (!this.isSoftwareGl && !this.isMobileDevice) {
       try {
@@ -464,26 +479,127 @@ export class GameEngine {
   }
 
   public rotateCamera(deltaX: number, deltaY: number) {
-    this.cameraAngles.yaw += deltaX * 0.005;
-    this.cameraAngles.pitch = Math.max(0.08, Math.min(0.85, this.cameraAngles.pitch + deltaY * 0.004));
+    this.targetAerialPitch = null;
+    this.targetCameraYaw = null;
+    this.cameraAngles.yaw += deltaX * 0.0055;
+    this.cameraAngles.pitch = Math.max(0.08, Math.min(1.52, this.cameraAngles.pitch + deltaY * 0.0045));
+  }
+
+  public panCamera(deltaX: number, deltaY: number) {
+    // Move o foco da câmera livremente em todas as direções (360°) pelos 7 bairros
+    this.targetCameraPanOffset = null;
+    const speed = Math.max(0.08, this.cameraZoom * 0.018);
+    const yaw = this.cameraAngles.yaw;
+    const stepX = (Math.cos(yaw) * deltaX + Math.sin(yaw) * deltaY) * speed;
+    const stepZ = (-Math.sin(yaw) * deltaX + Math.cos(yaw) * deltaY) * speed;
+
+    const minWorld = -265;
+    const maxWorld = 265;
+    const nextWorldX = THREE.MathUtils.clamp(this.playerPos.x + this.cameraPanOffset.x + stepX, minWorld, maxWorld);
+    const nextWorldZ = THREE.MathUtils.clamp(this.playerPos.z + this.cameraPanOffset.z + stepZ, minWorld, maxWorld);
+
+    this.cameraPanOffset.x = nextWorldX - this.playerPos.x;
+    this.cameraPanOffset.z = nextWorldZ - this.playerPos.z;
+  }
+
+  public resetCameraPan() {
+    this.targetCameraPanOffset = new THREE.Vector3(0, 0, 0);
+    this.dispatchHUDData();
+  }
+
+  public resetCameraToNormal() {
+    this.cameraPreset = 'third_person';
+    this.targetCameraZoom = 1.1;
+    this.targetAerialPitch = 0.28;
+    this.targetCameraPanOffset = new THREE.Vector3(0, 0, 0);
+    const baseYaw =
+      this.isInCar && this.currentPassengerCar
+        ? this.currentPassengerCar.rotationY
+        : this.isDrivingMoto && this.currentMotorcycle
+          ? this.currentMotorcycle.rotationY
+          : this.playerRotationY;
+    this.targetCameraYaw = baseYaw + Math.PI;
+    this.dialogueText = '📷 Câmera voltou ao normal seguindo Theo Lucca!';
+    this.dialogueTimer = 2.8;
+    soundManager.playPopClick();
+    this.dispatchHUDData();
   }
 
   public turnCameraLeft(step: number = 0.22) {
+    this.targetCameraYaw = null;
     this.cameraAngles.yaw += step;
   }
 
   public turnCameraRight(step: number = 0.22) {
+    this.targetCameraYaw = null;
     this.cameraAngles.yaw -= step;
   }
 
-  public zoomIn(step = 0.15) {
-    this.cameraZoom = Math.max(0.45, this.cameraZoom - step);
+  private syncPresetFromZoom() {
+    if (this.cameraZoom >= 52) this.cameraPreset = 'city';
+    else if (this.cameraZoom >= 14) this.cameraPreset = 'district';
+    else if (this.cameraZoom >= 2.6) this.cameraPreset = 'street';
+    else this.cameraPreset = 'third_person';
+  }
+
+  public zoomIn(step?: number) {
+    this.targetCameraZoom = null;
+    const deltaStep = step ?? Math.max(0.18, this.cameraZoom * 0.28);
+    this.cameraZoom = Math.max(0.45, this.cameraZoom - deltaStep);
+    this.syncPresetFromZoom();
     this.dispatchHUDData();
   }
 
-  public zoomOut(step = 0.15) {
-    this.cameraZoom = Math.min(2.4, this.cameraZoom + step);
+  public zoomOut(step?: number) {
+    this.targetCameraZoom = null;
+    const deltaStep = step ?? Math.max(0.35, this.cameraZoom * 0.38);
+    this.cameraZoom = Math.min(135.0, this.cameraZoom + deltaStep);
+    this.syncPresetFromZoom();
     this.dispatchHUDData();
+  }
+
+  public setCameraZoom(zoom: number) {
+    this.targetCameraZoom = null;
+    this.cameraZoom = Math.max(0.45, Math.min(135.0, zoom));
+    this.syncPresetFromZoom();
+    this.dispatchHUDData();
+  }
+
+  public setCameraPreset(preset: 'city' | 'district' | 'street' | 'third_person') {
+    this.cameraPreset = preset;
+    if (preset === 'city') {
+      this.targetCameraZoom = 96.0;
+      this.targetAerialPitch = 1.12;
+      this.targetCameraPanOffset = new THREE.Vector3(-this.playerPos.x, 0, -this.playerPos.z);
+      this.dialogueText = '🗺️ CIDADE GIGANTE 3X: Veja todos os 7 bairros e 5 igrejas de cima! Arraste ou dê zoom!';
+    } else if (preset === 'district') {
+      this.targetCameraZoom = 24.0;
+      this.targetAerialPitch = 0.90;
+      this.targetCameraPanOffset = new THREE.Vector3(0, 0, 0);
+      this.dialogueText = '🏘️ Visão de BAIRRO ativada!';
+    } else if (preset === 'street') {
+      this.targetCameraZoom = 4.2;
+      this.targetAerialPitch = 0.50;
+      this.targetCameraPanOffset = new THREE.Vector3(0, 0, 0);
+      this.dialogueText = '🛣️ Visão de RUA ativada!';
+    } else {
+      this.targetCameraZoom = 1.1;
+      this.targetAerialPitch = 0.28;
+      this.targetCameraPanOffset = new THREE.Vector3(0, 0, 0);
+      this.dialogueText = '🚶 Câmera em 3ª PESSOA seguindo Theo Lucca!';
+    }
+    this.dialogueTimer = 3.2;
+    soundManager.playPopClick();
+    this.dispatchHUDData();
+  }
+
+  public toggleAerialView() {
+    const activeTarget = this.targetCameraZoom ?? this.cameraZoom;
+    if (activeTarget >= 14.0) {
+      this.setCameraPreset('third_person');
+    } else {
+      this.setCameraPreset('city');
+    }
   }
 
   public getCameraZoom(): number {
@@ -492,8 +608,10 @@ export class GameEngine {
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    const zoomDelta = e.deltaY * 0.0012;
-    this.cameraZoom = Math.max(0.45, Math.min(2.4, this.cameraZoom + zoomDelta));
+    this.targetCameraZoom = null;
+    const zoomFactor = 1 + e.deltaY * 0.0014;
+    this.cameraZoom = Math.max(0.45, Math.min(135.0, this.cameraZoom * zoomFactor));
+    this.syncPresetFromZoom();
     this.dispatchHUDData();
   };
 
@@ -503,6 +621,10 @@ export class GameEngine {
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       this.touchPinchStartDist = Math.hypot(dx, dy);
       this.initialPinchZoom = this.cameraZoom;
+      this.touchPinchLastMid = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) * 0.5,
+        y: (e.touches[0].clientY + e.touches[1].clientY) * 0.5,
+      };
     }
   };
 
@@ -512,16 +634,25 @@ export class GameEngine {
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.hypot(dx, dy);
       if (dist > 5) {
+        this.targetCameraZoom = null;
         const ratio = this.touchPinchStartDist / dist;
-        this.cameraZoom = Math.max(0.45, Math.min(2.4, this.initialPinchZoom * ratio));
+        this.cameraZoom = Math.max(0.45, Math.min(135.0, this.initialPinchZoom * ratio));
+        this.syncPresetFromZoom();
         this.dispatchHUDData();
       }
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+      if (this.touchPinchLastMid) {
+        this.panCamera(midX - this.touchPinchLastMid.x, midY - this.touchPinchLastMid.y);
+      }
+      this.touchPinchLastMid = { x: midX, y: midY };
     }
   };
 
   private onTouchEnd = (e: TouchEvent) => {
     if (e.touches.length < 2) {
       this.touchPinchStartDist = 0;
+      this.touchPinchLastMid = null;
     }
   };
 
@@ -554,11 +685,17 @@ export class GameEngine {
       
       // Fala em voz alta em português do Brasil com a voz do personagem (masculina ou feminina)
       cityVoiceManager.speak(targetNPC.name, randomTip, targetNPC.gender || 'male', true);
+
+      if (targetNPC.name.includes('Padre')) {
+        this.checkMissionProgress(1, 1);
+      } else if (targetNPC.name.includes('Policial')) {
+        this.checkMissionProgress(2, 1);
+      }
     } else {
       // Personagem falando sozinho animado
       const charName = this.characterCustomization.name || 'Theo Lucca';
-      cityVoiceManager.speak(charName, `Oi cidade linda! Eu sou ${charName}! Vamos cumprir as missões e expandir o mapa!`, 'male', true);
-      this.dialogueText = `${charName}: "Oi cidade linda! Vamos cumprir as missões e expandir o mapa!"`;
+      cityVoiceManager.speak(charName, `Oi cidade linda! Eu sou ${charName}! Vamos explorar os 7 bairros!`, 'male', true);
+      this.dialogueText = `${charName}: "Oi cidade linda! Vamos explorar os 7 bairros!"`;
     }
     this.dialogueTimer = 6.0;
   }
@@ -867,9 +1004,10 @@ export class GameEngine {
 
         if (this.activeJob.id === 'pizza') {
           this.pizzaDeliveriesCount++;
-          this.checkMissionProgress(4, this.pizzaDeliveriesCount);
         }
-        this.checkMissionProgress(1, this.jobsFinishedCount);
+        if (this.activeJob.id === 'mercado') {
+          this.checkMissionProgress(3, 1);
+        }
 
         this.callbacks.onJobCompleted(this.activeJob.name, reward);
         this.dialogueText = `PARABÉNS! Você concluiu o trabalho e ganhou R$ ${reward},00!`;
@@ -884,9 +1022,24 @@ export class GameEngine {
 
     // 2. Se está perto de um local de trabalho, inicia o trabalho
     let nearestLoc = this.getNearestLocation();
-    if (nearestLoc && nearestLoc.dist < 3.8 && nearestLoc.category === 'job') {
-      this.startJob(nearestLoc.id);
-      return;
+    if (nearestLoc && nearestLoc.dist < 5.5) {
+      if (nearestLoc.id === 'igreja_matriz' || nearestLoc.id.startsWith('igreja_')) {
+        this.checkMissionProgress(1, 1);
+      } else if (nearestLoc.id === 'delegacia_policia') {
+        this.checkMissionProgress(2, 1);
+      } else if (
+        nearestLoc.id === 'supermercado_central' ||
+        nearestLoc.id === 'mercadinho_bairro_baixo' ||
+        nearestLoc.id === 'supermercado_oeste'
+      ) {
+        this.checkMissionProgress(3, 1);
+      } else if (nearestLoc.id === 'shopping_theo') {
+        this.checkMissionProgress(4, 1);
+      }
+      if (nearestLoc.category === 'job') {
+        this.startJob(nearestLoc.id);
+        return;
+      }
     }
 
     // 3. Falar com pessoas
@@ -910,13 +1063,8 @@ export class GameEngine {
     this.dialogueText = `Você comprou ${item.name}! O item foi guardado na sua Mochila!`;
     this.dialogueTimer = 4.0;
 
-    // Checagem de Missões
-    if (item.name.toLowerCase().includes('bola')) {
-      this.checkMissionProgress(3, 1);
-    }
-    if (item.name.toLowerCase().includes('carrinho')) {
-      this.checkMissionProgress(5, 1);
-    }
+    // Checagem de Missões (Compras no Mercado / Lojas)
+    this.checkMissionProgress(3, 1);
 
     return true;
   }
@@ -957,29 +1105,23 @@ export class GameEngine {
       soundManager.playMissionComplete();
       this.callbacks.onMissionCompleted(mission.title, mission.reward);
 
-      // EXPANSÃO DA CIDADE: A cada missão cumprida, a cidade fica maior!
-      this.cityExpansionLevel = Math.min(5, this.cityExpansionLevel + 1);
-      const districtInfo = this.cityScene.expandCity(this.cityExpansionLevel);
-      this.expansionAnnouncement = { name: districtInfo.name, desc: districtInfo.desc };
-      this.callbacks.onCityExpanded?.(districtInfo.name, districtInfo.desc);
-
-      // Locutor fala em português que a cidade cresceu e novo bairro foi liberado!
       cityVoiceManager.speak(
         'Cidade Real',
-        `Parabéns Theo Lucca! A cidade ficou maior! ${districtInfo.name} agora está desbloqueado no seu mapa de navegação!`,
+        `Parabéns Theo Lucca! Você concluiu ${mission.title} e ganhou ${mission.reward} moedas de ouro!`,
         'male',
         true
       );
 
-      // ATIVA O TUBO DE LUZ AUTOMATICAMENTE AO CUMPRIR A MISSÃO!
-      const portalPos = this.phasesManager.activateLightTubeForCurrentPhase();
-      this.cityScene.setBeaconPosition(portalPos);
-      this.dialogueText = `🎉 MISSÃO CUMPRIDA! CIDADE EXPANDIDA: ${districtInfo.name.toUpperCase()} AGORA ABERTO NO MAPA! 🗺️✨`;
-      this.dialogueTimer = 10.0;
-
       if (this.currentMissionIndex < this.missions.length - 1) {
         this.currentMissionIndex++;
+        const nextTarget = this.getDefaultMissionTarget();
+        this.cityScene.setBeaconPosition(new THREE.Vector3(nextTarget.x, 0, nextTarget.z));
+      } else {
+        const portalPos = this.phasesManager.activateLightTubeForCurrentPhase();
+        this.cityScene.setBeaconPosition(portalPos);
       }
+      this.dialogueText = `🎉 ${mission.title} CONCLUÍDA! +R$ ${mission.reward},00! Continue explorando os 7 bairros! ✨`;
+      this.dialogueTimer = 8.0;
     }
   }
 
@@ -1024,6 +1166,7 @@ export class GameEngine {
       this.cityScene.updateCity(now * 0.001, delta, this.playerPos);
       this.checkCoinPickups();
       this.checkNPCVoiceGreetings();
+      this.checkCityMissionProximity();
     }
 
     this.phasesManager.update(delta, now * 0.001);
@@ -1143,9 +1286,9 @@ export class GameEngine {
       tentativePos.x += forwardX * this.vehicleSpeed * delta;
       tentativePos.z += forwardZ * this.vehicleSpeed * delta;
 
-      // Limites do mapa
-      tentativePos.x = Math.max(-103, Math.min(103, tentativePos.x));
-      tentativePos.z = Math.max(-103, Math.min(103, tentativePos.z));
+      // Limites da cidade ampliada 3x (7 bairros + orla)
+      tentativePos.x = Math.max(-252, Math.min(252, tentativePos.x));
+      tentativePos.z = Math.max(-252, Math.min(252, tentativePos.z));
 
       // Colisão do carro com paredes, árvores e outros veículos (NÃO atravessa nada!)
       const collided = this.resolveCollisions(tentativePos, 1.4, car);
@@ -1257,8 +1400,8 @@ export class GameEngine {
       tentativePos.x += forwardX * this.vehicleSpeed * delta;
       tentativePos.z += forwardZ * this.vehicleSpeed * delta;
 
-      tentativePos.x = Math.max(-103, Math.min(103, tentativePos.x));
-      tentativePos.z = Math.max(-103, Math.min(103, tentativePos.z));
+      tentativePos.x = Math.max(-252, Math.min(252, tentativePos.x));
+      tentativePos.z = Math.max(-252, Math.min(252, tentativePos.z));
 
       // Colisão da moto com paredes, árvores e carros (NÃO atravessa nada!)
       const collided = this.resolveCollisions(tentativePos, 0.85, moto);
@@ -1346,9 +1489,9 @@ export class GameEngine {
       this.playerPos.x += moveDir.x * moveSpeed * moveMag * delta;
       this.playerPos.z += moveDir.z * moveSpeed * moveMag * delta;
 
-      // Limites da cidade aberta ampliada (220m x 220m)
-      this.playerPos.x = Math.max(-105, Math.min(105, this.playerPos.x));
-      this.playerPos.z = Math.max(-105, Math.min(105, this.playerPos.z));
+      // Limites da cidade aberta 3x (7 bairros + orla da praia)
+      this.playerPos.x = Math.max(-255, Math.min(255, this.playerPos.x));
+      this.playerPos.z = Math.max(-255, Math.min(255, this.playerPos.z));
 
       // COLISÃO COM PAREDES, ÁRVORES E VEÍCULOS (NÃO ATRAVESSA NADA!)
       this.resolveCollisions(this.playerPos, 0.45);
@@ -1400,22 +1543,77 @@ export class GameEngine {
   }
 
   private updateCamera(delta: number) {
+    if (this.targetCameraZoom !== null) {
+      this.cameraZoom = THREE.MathUtils.damp(this.cameraZoom, this.targetCameraZoom, 5.5, delta);
+      if (Math.abs(this.cameraZoom - this.targetCameraZoom) < 0.03) {
+        this.cameraZoom = this.targetCameraZoom;
+        this.targetCameraZoom = null;
+      }
+    }
+
+    if (this.targetAerialPitch !== null) {
+      this.cameraAngles.pitch = THREE.MathUtils.damp(this.cameraAngles.pitch, this.targetAerialPitch, 5.5, delta);
+      if (Math.abs(this.cameraAngles.pitch - this.targetAerialPitch) < 0.015) {
+        this.cameraAngles.pitch = this.targetAerialPitch;
+        this.targetAerialPitch = null;
+      }
+    }
+
+    if (this.targetCameraYaw !== null) {
+      let yawDiff = this.targetCameraYaw - this.cameraAngles.yaw;
+      while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+      while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+      const step = yawDiff * (1 - Math.exp(-6.5 * delta));
+      this.cameraAngles.yaw += step;
+      if (Math.abs(yawDiff) < 0.015) {
+        this.cameraAngles.yaw = this.targetCameraYaw;
+        this.targetCameraYaw = null;
+      }
+    }
+
+    if (this.targetCameraPanOffset !== null) {
+      this.cameraPanOffset.x = THREE.MathUtils.damp(this.cameraPanOffset.x, this.targetCameraPanOffset.x, 7.0, delta);
+      this.cameraPanOffset.z = THREE.MathUtils.damp(this.cameraPanOffset.z, this.targetCameraPanOffset.z, 7.0, delta);
+      if (this.cameraPanOffset.distanceTo(this.targetCameraPanOffset) < 0.08) {
+        this.cameraPanOffset.copy(this.targetCameraPanOffset);
+        this.targetCameraPanOffset = null;
+      }
+    } else if (this.cameraZoom < 1.35 && this.cameraPanOffset.lengthSq() > 0.01 && (this.playerVelocity.lengthSq() > 0.25 || this.isInCar || this.isDrivingMoto)) {
+      this.cameraPanOffset.x = THREE.MathUtils.damp(this.cameraPanOffset.x, 0, 5.0, delta);
+      this.cameraPanOffset.z = THREE.MathUtils.damp(this.cameraPanOffset.z, 0, 5.0, delta);
+    }
+
     let camDist = 3.8 * this.cameraZoom;
 
     if (this.isInCar && this.currentPassengerCar) {
-      camDist = 7.2 * this.cameraZoom;
-      const targetYaw = this.currentPassengerCar.rotationY + Math.PI;
-      this.cameraAngles.yaw = THREE.MathUtils.damp(this.cameraAngles.yaw, targetYaw, 3.5, delta);
+      camDist = Math.min(520, (this.cameraZoom >= 12 ? 3.8 : 6.4) * this.cameraZoom);
+      if (this.cameraZoom < 2.6 && this.cameraPanOffset.lengthSq() < 0.5) {
+        const targetYaw = this.currentPassengerCar.rotationY + Math.PI;
+        this.cameraAngles.yaw = THREE.MathUtils.damp(this.cameraAngles.yaw, targetYaw, 3.5, delta);
+      }
     } else if (this.isDrivingMoto && this.currentMotorcycle) {
-      camDist = 5.6 * this.cameraZoom;
-      const targetYaw = this.currentMotorcycle.rotationY + Math.PI;
-      this.cameraAngles.yaw = THREE.MathUtils.damp(this.cameraAngles.yaw, targetYaw, 4.2, delta);
+      camDist = Math.min(520, (this.cameraZoom >= 12 ? 3.8 : 5.4) * this.cameraZoom);
+      if (this.cameraZoom < 2.6 && this.cameraPanOffset.lengthSq() < 0.5) {
+        const targetYaw = this.currentMotorcycle.rotationY + Math.PI;
+        this.cameraAngles.yaw = THREE.MathUtils.damp(this.cameraAngles.yaw, targetYaw, 4.2, delta);
+      }
+    }
+
+    // LOD baseado na distância da câmera: esconde micro detalhes quando longe para manter 60 FPS no celular
+    this.cityScene.setCameraDistanceLOD?.(camDist);
+
+    // Expande alcance de renderização quando afastado para ver todos os 7 bairros e o mar de cima sem cortes
+    const baseFar = this.performanceMode === 'baixo' ? 280 : this.performanceMode === 'medio' ? 380 : 480;
+    const neededFar = Math.max(baseFar, camDist + 650);
+    if (Math.abs(this.camera.far - neededFar) > 8) {
+      this.camera.far = neededFar;
+      this.camera.updateProjectionMatrix();
     }
 
     const targetLookAt = new THREE.Vector3(
-      this.playerPos.x,
+      this.playerPos.x + this.cameraPanOffset.x,
       this.playerPos.y + (this.isInCar || this.isDrivingMoto ? 1.1 : 0.85),
-      this.playerPos.z
+      this.playerPos.z + this.cameraPanOffset.z
     );
 
     const pitch = this.cameraAngles.pitch;
@@ -1454,23 +1652,47 @@ export class GameEngine {
         this.coinsCollected++;
         soundManager.playCoinCollect();
 
-        this.checkMissionProgress(2, this.coinsCollected);
+        this.checkMissionProgress(5, this.coinsCollected);
         this.callbacks.onCoinCollected(coin.value, this.money);
       }
     });
+  }
+
+  private checkCityMissionProximity() {
+    // Missão 3: Chegou dentro/na frente de qualquer Supermercado / Mercadinho
+    if (!this.missions[2].completed) {
+      const distMerc1 = Math.hypot(this.playerPos.x - (-20), this.playerPos.z - 22);
+      const distMerc2 = Math.hypot(this.playerPos.x - (-90), this.playerPos.z - 148);
+      const distMerc3 = Math.hypot(this.playerPos.x - (-210), this.playerPos.z - (-150));
+      if (distMerc1 < 8.5 || distMerc2 < 9.5 || distMerc3 < 10.5) {
+        this.checkMissionProgress(3, 1);
+      }
+    }
+    // Missão 4: Chegou no Shopping Center no Bairro Novo
+    if (!this.missions[3].completed) {
+      const distShopping = Math.hypot(this.playerPos.x - 90, this.playerPos.z - (-90));
+      if (distShopping < 18.0) {
+        this.checkMissionProgress(4, 1);
+      }
+    }
   }
 
   // Saudação por voz em português quando Theo Lucca se aproxima das pessoas na cidade
   private checkNPCVoiceGreetings() {
     for (const npc of this.cityScene.npcs) {
       const d = npc.group.position.distanceTo(this.playerPos);
-      if (d < 4.2) {
+      if (d < 4.5) {
         const tipsList = npc.tips && npc.tips.length > 0 ? npc.tips : [npc.phrase];
         const randomTip = tipsList[Math.floor(Math.random() * tipsList.length)];
         const spoke = cityVoiceManager.speak(npc.name, randomTip, npc.gender || 'male', false);
         if (spoke) {
           this.dialogueText = `${npc.name}: "${randomTip}"`;
           this.dialogueTimer = 5.5;
+        }
+        if (npc.name.includes('Padre')) {
+          this.checkMissionProgress(1, 1);
+        } else if (npc.name.includes('Policial')) {
+          this.checkMissionProgress(2, 1);
         }
         break;
       }
@@ -1650,16 +1872,16 @@ export class GameEngine {
   public getDefaultMissionTarget(): { x: number; z: number; name: string } {
     switch (this.currentMissionIndex) {
       case 0:
-        return { x: 32, z: -24, name: 'Oficina Theo Lucca (Trabalhar)' };
+        return { x: 4.5, z: 16, name: 'Igreja Matriz (Padre Antônio)' };
       case 1:
-        return { x: 0, z: 0, name: 'Praça Central (Moedas Douradas)' };
+        return { x: 45, z: 10, name: 'Delegacia (Policial Marcos)' };
       case 2:
-        return { x: -36, z: 26, name: 'Loja de Brinquedos (Bola de Futebol)' };
+        return { x: -20, z: 22, name: 'Mercadinho Central (Compras)' };
       case 3:
-        return { x: -18, z: -22, name: 'Pizzaria (Entregar Pizzas)' };
+        return { x: 90, z: -90, name: 'Shopping Center (Bairro Novo)' };
       case 4:
       default:
-        return { x: -36, z: 26, name: 'Loja de Brinquedos (Carrinho)' };
+        return { x: 0, z: 0, name: 'Avenida Central (Moedas)' };
     }
   }
 
@@ -1721,7 +1943,7 @@ export class GameEngine {
       ? Math.hypot(this.playerPos.x - targetBeaconPos.x, this.playerPos.z - targetBeaconPos.z)
       : (nearestLoc ? nearestLoc.dist : 0);
 
-    let phaseName = 'Cidade Real 3D (Oficina & Bairro)';
+    let phaseName = 'Cidade Gigante 3D (7 Bairros)';
     let currentMission = this.missions[this.currentMissionIndex] || this.missions[0];
     let phaseTargetCount = this.coinsCollected;
     let phaseTargetTotal = this.cityScene.coins.length;
@@ -1818,6 +2040,9 @@ export class GameEngine {
       graphicQuality: this.performanceMode,
       isCarDented: this.isInCar && this.currentPassengerCar ? (this.currentPassengerCar.dentLevel || 0) > 0 : false,
       cameraZoom: this.cameraZoom,
+      cameraPreset: this.cameraPreset,
+      isCameraPanned: this.cameraPanOffset.lengthSq() > 1.5,
+      dayCycleDurationSeconds: this.fullDayCycleSeconds,
       characterCustomization: this.characterCustomization,
       characterName: this.characterCustomization.name || 'Theo Lucca',
       // Sistema de Economia & Construção
@@ -1875,6 +2100,12 @@ export class GameEngine {
     if (e.code === 'KeyT') {
       this.cycleDayNightPeriod();
     }
+    if (e.code === 'KeyV') {
+      this.toggleAerialView();
+    }
+    if (e.code === 'KeyR') {
+      this.resetCameraToNormal();
+    }
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -1895,13 +2126,14 @@ export class GameEngine {
 
     if (!this.renderer || !this.camera) return;
 
+    const camDist = 3.8 * this.cameraZoom;
     if (normalized === 'baixo') {
       // BAIXO (60 FPS Ultraleve): Sem sombras dinâmicas, renderização rápida para celulares Android
       this.renderer.shadowMap.enabled = false;
       if (this.cityScene?.sunLight) {
         this.cityScene.sunLight.castShadow = false;
       }
-      this.camera.far = 145;
+      this.camera.far = Math.max(280, camDist + 650);
       this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, this.isMobileDevice ? 1.15 : 1.25));
     } else if (normalized === 'medio') {
       // MÉDIO (Equilibrado): Sombras dinâmicas PCF 1024x1024 (ou 512x512 no celular)
@@ -1912,7 +2144,7 @@ export class GameEngine {
         const mapDim = this.isMobileDevice ? 512 : 1024;
         this.cityScene.sunLight.shadow.mapSize.set(mapDim, mapDim);
       }
-      this.camera.far = 195;
+      this.camera.far = Math.max(380, camDist + 650);
       this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, this.isMobileDevice ? 1.35 : 1.5));
     } else {
       // ALTO (Godot / GTA Ultra): Sombras suaves PCFSoftShadowMap 2048x2048 (ou 1024x1024 no celular)
@@ -1924,7 +2156,7 @@ export class GameEngine {
         this.cityScene.sunLight.shadow.mapSize.set(mapDim, mapDim);
         this.cityScene.sunLight.shadow.bias = -0.0003;
       }
-      this.camera.far = 250;
+      this.camera.far = Math.max(480, camDist + 650);
       this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, this.isMobileDevice ? 1.5 : 2.0));
     }
     this.camera.updateProjectionMatrix();
@@ -2095,9 +2327,11 @@ export class GameEngine {
     const span = Math.max(0.001, k1.h - k0.h);
     const t = THREE.MathUtils.clamp((h - k0.h) / span, 0, 1);
 
+    const camDist = 3.8 * this.cameraZoom;
+    const fogDistScale = camDist > 60 ? Math.max(0.055, 24 / camDist) : 1.0;
     this.dayCycleLighting.skyColor.lerpColors(this.scratchColorA.setHex(k0.sky), this.scratchColorB.setHex(k1.sky), t);
     this.dayCycleLighting.fogColor.lerpColors(this.scratchColorA.setHex(k0.fog), this.scratchColorB.setHex(k1.fog), t);
-    this.dayCycleLighting.fogDensity = THREE.MathUtils.lerp(k0.fogD, k1.fogD, t);
+    this.dayCycleLighting.fogDensity = THREE.MathUtils.lerp(k0.fogD, k1.fogD, t) * fogDistScale;
     this.dayCycleLighting.sunColor.lerpColors(this.scratchColorA.setHex(k0.sun), this.scratchColorB.setHex(k1.sun), t);
     this.dayCycleLighting.sunIntensity = THREE.MathUtils.lerp(k0.sunI, k1.sunI, t);
     this.dayCycleLighting.skyLightColor.lerpColors(this.scratchColorA.setHex(k0.hSky), this.scratchColorB.setHex(k1.hSky), t);
@@ -2166,6 +2400,17 @@ export class GameEngine {
 
   public getDayTimeHours(): number {
     return this.dayTimeHours;
+  }
+
+  public setDayCycleDurationSeconds(seconds: number) {
+    this.fullDayCycleSeconds = THREE.MathUtils.clamp(Math.round(seconds), 120, 3600);
+    safeSetItem('theo_lucca_day_cycle_sec', String(this.fullDayCycleSeconds));
+    soundManager.playPopClick();
+    this.dispatchHUDData();
+  }
+
+  public getDayCycleDurationSeconds(): number {
+    return this.fullDayCycleSeconds;
   }
 
   // --- MÉTODOS DO SISTEMA DE CLIMA DINÂMICO ---

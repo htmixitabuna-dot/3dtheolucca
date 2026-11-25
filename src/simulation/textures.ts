@@ -337,3 +337,152 @@ export function createRoofTileTexture(): THREE.CanvasTexture {
   return finalizeTexture(new THREE.CanvasTexture(canvas));
 }
 
+// 10. Textura de Concreto Arquitetônico Realista para Prédios, Pontes e Prefeitura
+export function createConcreteTexture(baseHex: string = '#cbd5e1'): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = baseHex;
+  ctx.fillRect(0, 0, 256, 256);
+
+  const imgData = ctx.getImageData(0, 0, 256, 256);
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const grain = (Math.random() - 0.5) * 18;
+    data[i] = Math.min(255, Math.max(0, data[i] + grain));
+    data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + grain));
+    data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + grain));
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Painéis de concreto pré-moldado
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.14)';
+  ctx.lineWidth = 2;
+  for (let y = 0; y <= 256; y += 64) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(256, y);
+    ctx.stroke();
+  }
+  for (let x = 0; x <= 256; x += 128) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 256);
+    ctx.stroke();
+  }
+
+  return finalizeTexture(new THREE.CanvasTexture(canvas));
+}
+
+// 11. Textura de Placa de Rua Realista (Verde com borda branca)
+export function createStreetSignTexture(streetName: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#065f46';
+  ctx.fillRect(0, 0, 512, 128);
+
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(8, 8, 496, 112);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 44px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(streetName.toUpperCase(), 256, 66);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 2;
+  return tex;
+}
+
+// 12. Textura de Prédio Residencial/Comercial (Tijolo ou Concreto + Janelas + Mapa Emissivo Noturno)
+export function createTowerFacadeBundle(style: 'brick' | 'concrete'): {
+  map: THREE.CanvasTexture;
+  emissiveMap: THREE.CanvasTexture;
+} {
+  const albedo = document.createElement('canvas');
+  albedo.width = 256;
+  albedo.height = 256;
+  const aCtx = albedo.getContext('2d')!;
+
+  const emissive = document.createElement('canvas');
+  emissive.width = 256;
+  emissive.height = 256;
+  const eCtx = emissive.getContext('2d')!;
+
+  // Parede base neutra (colorida via material.color)
+  aCtx.fillStyle = style === 'brick' ? '#e7d5c9' : '#f1f5f9';
+  aCtx.fillRect(0, 0, 256, 256);
+
+  eCtx.fillStyle = '#000000';
+  eCtx.fillRect(0, 0, 256, 256);
+
+  // Detalhe de textura de parede
+  if (style === 'brick') {
+    aCtx.strokeStyle = 'rgba(120, 53, 15, 0.18)';
+    aCtx.lineWidth = 1.5;
+    for (let y = 0; y < 256; y += 16) {
+      aCtx.beginPath();
+      aCtx.moveTo(0, y);
+      aCtx.lineTo(256, y);
+      aCtx.stroke();
+    }
+  } else {
+    aCtx.strokeStyle = 'rgba(15, 23, 42, 0.14)';
+    aCtx.lineWidth = 2;
+    for (let y = 0; y < 256; y += 64) {
+      aCtx.beginPath();
+      aCtx.moveTo(0, y);
+      aCtx.lineTo(256, y);
+      aCtx.stroke();
+    }
+  }
+
+  // Janelas 4 colunas x 4 andares por repetição
+  const cols = 4;
+  const rows = 4;
+  const padX = 14;
+  const padY = 14;
+  const winW = (256 - padX * (cols + 1)) / cols;
+  const winH = (256 - padY * (rows + 1)) / rows;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const wx = padX + c * (winW + padX);
+      const wy = padY + r * (winH + padY);
+
+      aCtx.fillStyle = '#1e293b';
+      aCtx.fillRect(wx - 2, wy - 2, winW + 4, winH + 4);
+
+      const grad = aCtx.createLinearGradient(wx, wy, wx + winW, wy + winH);
+      grad.addColorStop(0, '#7dd3fc');
+      grad.addColorStop(0.6, '#0284c7');
+      grad.addColorStop(1, '#0f172a');
+      aCtx.fillStyle = grad;
+      aCtx.fillRect(wx, wy, winW, winH);
+
+      aCtx.fillStyle = '#334155';
+      aCtx.fillRect(wx + winW / 2 - 1, wy, 2, winH);
+
+      // Janelas acesas aleatoriamente à noite no emissiveMap
+      if ((r * 5 + c * 3) % 4 !== 0) {
+        eCtx.fillStyle = (r + c) % 2 === 0 ? '#fef08a' : '#fed7aa';
+        eCtx.fillRect(wx, wy, winW, winH);
+      }
+    }
+  }
+
+  return {
+    map: finalizeTexture(new THREE.CanvasTexture(albedo)),
+    emissiveMap: finalizeTexture(new THREE.CanvasTexture(emissive)),
+  };
+}
+
+

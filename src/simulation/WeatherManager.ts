@@ -57,7 +57,7 @@ export class WeatherManager {
   private targetWeather: WeatherType = 'sunny';
   private weatherPhase: 'sunny' | 'clouding_over' | 'raining' | 'clearing_up' | 'night' = 'sunny';
   private autoCycle: boolean = true;
-  private cycleTimer: number = 210; // Inicia ensolarado por ~3.5 minutos
+  private cycleTimer: number = 420; // Inicia ensolarado por ~7 minutos para acompanhar o ciclo longo de dia e noite
   private wasNight: boolean = false;
   private onNightStateChanged?: (isNight: boolean) => void;
 

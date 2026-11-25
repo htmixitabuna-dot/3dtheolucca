@@ -50,14 +50,14 @@ export default function App() {
     stamina: 100,
     isExhausted: false,
     coinsCollected: 0,
-    totalCoins: 24,
+    totalCoins: 42,
     backpack: [],
     activeJob: null,
     currentMission: {
       id: 1,
-      title: 'Missão 1: Primeiro Trabalho',
-      description: 'Trabalhe 1 vez e ganhe seus primeiros R$ 20!',
-      reward: 15,
+      title: 'Missão 1: Fale com o Padre',
+      description: 'Vá até a Igreja Matriz no Centro e fale com o Padre Antônio!',
+      reward: 20,
       progress: 0,
       total: 1,
       completed: false,
@@ -70,12 +70,12 @@ export default function App() {
     dialogueText: null,
     distanceToTarget: 0,
     currentPhase: 1,
-    phaseName: 'Cidade Real 3D (Oficina & Bairro)',
+    phaseName: 'Cidade Gigante 3D (7 Bairros)',
     lightTubeActive: false,
     lightTubeDist: 999,
     phaseTargetCount: 0,
-    phaseTargetTotal: 24,
-    cityExpansionLevel: 1,
+    phaseTargetTotal: 42,
+    cityExpansionLevel: 7,
     playerX: -14,
     playerZ: -14,
     playerRotationY: Math.PI * 0.75,
@@ -88,7 +88,10 @@ export default function App() {
     performanceMode: 'baixo',
     graphicQuality: 'baixo',
     isCarDented: false,
-    cameraZoom: 1.0,
+    cameraZoom: 96.0,
+    cameraPreset: 'city',
+    isCameraPanned: true,
+    dayCycleDurationSeconds: 720,
     characterCustomization: DEFAULT_CHARACTER_CUSTOMIZATION,
     characterName: 'Theo Lucca',
     wallet: economyManager.getWallet(),
@@ -428,6 +431,12 @@ export default function App() {
             onTurnRight={handleTurnRight}
             onCameraZoomIn={handleCameraZoomIn}
             onCameraZoomOut={handleCameraZoomOut}
+            onToggleAerialView={() => gameEngineRef.current?.toggleAerialView()}
+            onSetCameraPreset={(preset) => gameEngineRef.current?.setCameraPreset(preset)}
+            onSetCameraZoom={(z) => gameEngineRef.current?.setCameraZoom(z)}
+            onCameraPan={(dx, dy) => gameEngineRef.current?.panCamera(dx, dy)}
+            onResetCameraPan={() => gameEngineRef.current?.resetCameraPan()}
+            onResetCamera={() => gameEngineRef.current?.resetCameraToNormal()}
             onOpenUnityCode={() => setActiveTab('unityCode')}
             onOpenBackpack={() => setShowBackpackModal(true)}
             onOpenJobsModal={() => setShowJobsModal(true)}
@@ -447,6 +456,7 @@ export default function App() {
             onOpenLoginScreen={() => setShowLoginScreen(true)}
             onToggleDayNight={() => gameEngineRef.current?.cycleDayNightPeriod()}
             onToggleWeather={() => gameEngineRef.current?.toggleWeather()}
+            onSetDayCycleDuration={(seconds) => gameEngineRef.current?.setDayCycleDurationSeconds(seconds)}
           />
         )}
 
