@@ -174,7 +174,7 @@ export const EsmeraldaStoreModal: React.FC<EsmeraldaStoreModalProps> = ({
       {/* ============================================================== */}
       {/* 1. TOP HEADER (PERFIL, SALDOS DE 3 MOEDAS, AÇÕES E FECHAR)    */}
       {/* ============================================================== */}
-      <header className="relative z-20 w-full px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2 border-b border-indigo-900/40 bg-slate-950/75 backdrop-blur-md">
+      <header className="relative z-20 w-full px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2 border-b border-indigo-900/40 bg-slate-950/90">
         
         {/* CARD DO JOGADOR (AVATAR, NOME, NÍVEL E BARRA DE XP) */}
         <div className="flex items-center gap-2 sm:gap-2.5 bg-gradient-to-r from-blue-950/90 via-slate-900/90 to-indigo-950/80 border-2 border-cyan-400/80 rounded-xl px-2 sm:px-3 py-1 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
@@ -384,7 +384,7 @@ export const EsmeraldaStoreModal: React.FC<EsmeraldaStoreModalProps> = ({
         </div>
 
         {/* CENTRO: PALCO 3D COM O CENÁRIO REAL DO JOGO E O AVATAR EM MOVIMENTO */}
-        <div className="flex-1 relative flex flex-col items-center justify-center min-h-[280px] md:min-h-[420px] rounded-2xl overflow-hidden border border-cyan-500/30 bg-slate-950/50 backdrop-blur-sm shadow-[0_0_35px_rgba(6,182,212,0.25)]">
+        <div className="flex-1 relative flex flex-col items-center justify-center min-h-[280px] md:min-h-[420px] rounded-2xl overflow-hidden border border-cyan-500/30 bg-slate-950/85 shadow-[0_0_35px_rgba(6,182,212,0.25)]">
           
           {/* VIEWPORT 3D DO THEO LUCCA COM O ITEM SELECIONADO E O CENÁRIO REAL */}
           <Store3DStage
@@ -396,7 +396,7 @@ export const EsmeraldaStoreModal: React.FC<EsmeraldaStoreModalProps> = ({
           />
 
           {/* CONTROLES DE MOVIMENTO DO AVATAR (ACENAR, POSE, DANÇA, AUTO-GIRO) */}
-          <div className="absolute top-2 right-2 z-20 flex items-center gap-1 sm:gap-1.5 bg-slate-950/85 border border-purple-500/60 rounded-xl p-1 shadow-lg backdrop-blur-md">
+          <div className="absolute top-2 right-2 z-20 flex items-center gap-1 sm:gap-1.5 bg-slate-950/95 border border-purple-500/60 rounded-xl p-1 shadow-lg">
             <button
               onClick={() => {
                 setActionPose('wave');
@@ -466,7 +466,7 @@ export const EsmeraldaStoreModal: React.FC<EsmeraldaStoreModalProps> = ({
         {/* COLUNA DIREITA: CARD DO PRODUTO SELECIONADO (ESTILO FREE FIRE ROXO/MAGENTA) */}
         <div className="w-full md:w-80 lg:w-96 flex flex-col justify-between z-20">
           
-          <div className="transform -skew-x-2 md:-skew-x-4 bg-gradient-to-b from-purple-950/95 via-indigo-950/95 to-slate-950/95 border-2 border-fuchsia-500/80 rounded-2xl p-3 sm:p-4 shadow-[0_0_35px_rgba(217,70,239,0.45)] backdrop-blur-md flex flex-col gap-3">
+          <div className="transform -skew-x-2 md:-skew-x-4 bg-gradient-to-b from-purple-950/95 via-indigo-950/95 to-slate-950/95 border-2 border-fuchsia-500/80 rounded-2xl p-3 sm:p-4 shadow-[0_0_35px_rgba(217,70,239,0.45)] flex flex-col gap-3">
             
             {/* TÍTULO DO PRODUTO */}
             <div className="transform skew-x-2 md:skew-x-4">
@@ -667,7 +667,7 @@ export const EsmeraldaStoreModal: React.FC<EsmeraldaStoreModalProps> = ({
       {/* 4. MODAL DE VITÓRIA / AQUISIÇÃO DE SUCESSO (ESTILO FREE FIRE)   */}
       {/* ============================================================== */}
       {purchasedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 animate-fade-in">
           <div className="transform -skew-x-2 bg-gradient-to-b from-purple-950 via-indigo-950 to-slate-950 border-2 border-yellow-400 rounded-2xl max-w-sm w-full p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.6)] flex flex-col items-center gap-4">
             
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-yellow-400 to-amber-500 text-slate-950 flex items-center justify-center text-4xl shadow-xl animate-bounce-slight">
@@ -703,7 +703,7 @@ export const EsmeraldaStoreModal: React.FC<EsmeraldaStoreModalProps> = ({
       {/* 5. MODAL DE AJUDA DAS MOEDAS AO CLICAR NO "+"                 */}
       {/* ============================================================== */}
       {showCurrencyHelp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 animate-fade-in">
           <div className="bg-slate-900 border-2 border-cyan-400/80 rounded-2xl max-w-sm w-full p-5 text-center shadow-[0_0_40px_rgba(6,182,212,0.5)] flex flex-col items-center gap-3">
             <div className="text-4xl">
               {showCurrencyHelp === 'ouro' ? '🪙' : showCurrencyHelp === 'diamantes' ? '💎' : '❇️'}

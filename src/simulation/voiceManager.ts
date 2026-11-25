@@ -28,7 +28,7 @@ class CityVoiceManager {
     if (typeof window !== 'undefined') {
       const unlockAudio = () => {
         this.hasUserInteracted = true;
-        if ('speechSynthesis' in window) {
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
           // Aquece o sintetizador com voz vazia para destravar no iOS/Android
           try {
             const warmUp = new SpeechSynthesisUtterance('');
@@ -47,7 +47,7 @@ class CityVoiceManager {
 
   public setMuted(muted: boolean) {
     this.isMuted = muted;
-    if (muted && 'speechSynthesis' in window) {
+    if (muted && typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
       } catch {
@@ -72,9 +72,10 @@ class CityVoiceManager {
    * Obtém a melhor voz do sistema para o gênero requisitado em português
    */
   private getBestVoice(gender: VoiceGender): SpeechSynthesisVoice | null {
-    if (!('speechSynthesis' in window)) return null;
-    const voices = window.speechSynthesis.getVoices();
-    if (!voices || voices.length === 0) return null;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !window.speechSynthesis) return null;
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices || voices.length === 0) return null;
 
     const ptVoices = voices.filter(
       (v) => v.lang.toLowerCase().includes('pt') || v.lang.toLowerCase().includes('brazil') || v.lang.toLowerCase().includes('portuguese')
@@ -96,7 +97,10 @@ class CityVoiceManager {
       if (match) return match;
     }
 
-    return voiceList[0] || null;
+      return voiceList[0] || null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -127,7 +131,7 @@ class CityVoiceManager {
     // Dispara callbacks de UI (balão de fala e HUD animada)
     this.onSpeechStartCallbacks.forEach((cb) => cb(speakerName, text, gender));
 
-    if ('speechSynthesis' in window) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
       try {
         window.speechSynthesis.cancel(); // Interrompe fala anterior
 

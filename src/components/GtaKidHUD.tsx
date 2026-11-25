@@ -15,6 +15,7 @@ import {
   CheckCircle2, 
   BellRing,
   RotateCw,
+  RefreshCw,
   Sparkles,
   Settings,
   Shirt,
@@ -41,6 +42,8 @@ export interface GtaKidHUDProps {
   onCameraRotate: (dx: number, dy: number) => void;
   onTurnLeft: () => void;
   onTurnRight: () => void;
+  onCameraZoomIn?: () => void;
+  onCameraZoomOut?: () => void;
   onOpenUnityCode: () => void;
   onOpenBackpack: () => void;
   onOpenJobsModal: () => void;
@@ -48,6 +51,7 @@ export interface GtaKidHUDProps {
   onActivateLightTube?: () => void;
   onSetGPSDestination?: (x: number, z: number, name: string) => void;
   onTogglePerformanceMode?: () => void;
+  onSetPerformanceMode?: (mode: 'baixo' | 'medio' | 'alto') => void;
   onOpenCustomizer?: () => void;
   // Novos recursos: Economia, Loja Esmeralda, Inventário Categorizado, Construção & Admin
   onOpenEsmeraldaStore?: () => void;
@@ -57,6 +61,9 @@ export interface GtaKidHUDProps {
   onRotateBuildPlacement?: () => void;
   onCancelBuildPlacement?: () => void;
   onDismantleNearestBuilding?: () => void;
+  onOpenLoginScreen?: () => void;
+  onToggleDayNight?: () => void;
+  onToggleWeather?: () => void;
 }
 
 export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
@@ -73,6 +80,8 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   onCameraRotate,
   onTurnLeft,
   onTurnRight,
+  onCameraZoomIn,
+  onCameraZoomOut,
   onOpenUnityCode,
   onOpenBackpack,
   onOpenJobsModal,
@@ -80,6 +89,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   onActivateLightTube,
   onSetGPSDestination,
   onTogglePerformanceMode,
+  onSetPerformanceMode,
   onOpenCustomizer,
   onOpenEsmeraldaStore,
   onOpenInventory,
@@ -88,16 +98,20 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   onRotateBuildPlacement,
   onCancelBuildPlacement,
   onDismantleNearestBuilding,
+  onOpenLoginScreen,
+  onToggleDayNight,
+  onToggleWeather,
 }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [touchSensitivity, setTouchSensitivity] = useState(1.4);
   const [invertTouch, setInvertTouch] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-  // Joystick touch tracking
+  // Joystick touch tracking (suporta multi-touch simultâneo no Android sem conflito com câmera)
   const [joystickActive, setJoystickActive] = useState(false);
   const [joystickPos, setJoystickPos] = useState({ x: 0, y: 0 });
   const joystickRef = useRef<HTMLDivElement>(null);
+  const joystickTouchIdRef = useRef<number | null>(null);
 
   // Camera multi-touch rotation
   const cameraTouchRef = useRef<{
@@ -141,6 +155,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
   };
 
   const handleJoystickEnd = () => {
+    joystickTouchIdRef.current = null;
     setJoystickActive(false);
     setJoystickPos({ x: 0, y: 0 });
     onJoystickMove(0, 0);
@@ -223,15 +238,23 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
     isMouseDownRef.current = false;
   };
 
+  const handleScreenWheel = (e: React.WheelEvent) => {
+    if (e.deltaY < 0) {
+      onCameraZoomIn?.();
+    } else if (e.deltaY > 0) {
+      onCameraZoomOut?.();
+    }
+  };
+
   const isNearShop = hudState.nearestLocation?.category === 'shop' && hudState.nearestLocation.dist < 4.5;
   const isNearCar = hudState.nearestCar && hudState.nearestCar.dist < 5.2;
   const isNearMoto = hudState.nearestMoto && hudState.nearestMoto.dist < 5.2;
   const isNearVehicle = isNearCar || isNearMoto;
 
   return (
-    <div className="absolute inset-0 select-none overflow-hidden font-sans">
+    <div className="absolute inset-0 select-none overflow-hidden font-sans pointer-events-none">
       
-      {/* SUPERFÍCIE DE TOQUE EM TELA CHEIA PARA GIRAR A CÂMERA */}
+      {/* SUPERFÍCIE DE TOQUE EM TELA CHEIA PARA GIRAR E DAR ZOOM NA CÂMERA */}
       <div 
         className="absolute inset-0 z-0 pointer-events-auto touch-none cursor-grab active:cursor-grabbing"
         onTouchStart={handleScreenTouchStart}
@@ -242,6 +265,7 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onWheel={handleScreenWheel}
       />
 
       {/* =========================================================================
@@ -398,80 +422,101 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
         </div>
       </div>
 
-      {/* 3. CANTO SUPERIOR DIREITO: BOTÕES DE CONTROLE RÁPIDO COMPACTOS (SEM SOBREPOSIÇÃO) */}
-      <div className="absolute top-2 right-2 z-30 pointer-events-auto flex items-center gap-1 sm:gap-1.5">
-        {/* BOTÃO ALTERNAR MODO LEVE (60 FPS NÍTIDO) / MODO NORMAL */}
-        {onTogglePerformanceMode && (
+      {/* 3. CANTO SUPERIOR DIREITO: BOTÕES DE CONTROLE RÁPIDO + INDICADOR DO CLIMA/CICLO DIA-NOITE */}
+      <div className="absolute top-2 right-2 z-30 pointer-events-auto flex flex-col items-end gap-1">
+        <div className="flex items-center gap-1 sm:gap-1.5">
+          {/* BOTÃO ALTERNAR QUALIDADE GRÁFICA: BAIXO (60 FPS) / MÉDIO / ALTO (GODOT/GTA) */}
+          {onTogglePerformanceMode && (
+            <button
+              onClick={onTogglePerformanceMode}
+              className={`w-7 h-7 sm:w-auto sm:h-8 sm:px-2 rounded-lg border flex items-center justify-center gap-1 transition shadow font-mono text-[9px] sm:text-[10px] font-black active:scale-95 ${
+                hudState.performanceMode === 'baixo' || hudState.performanceMode === 'light'
+                  ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 hover:bg-emerald-900 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                  : (hudState.performanceMode === 'medio'
+                      ? 'bg-blue-950/90 border-blue-400 text-blue-300 hover:bg-blue-900'
+                      : 'bg-amber-950/90 border-amber-400 text-amber-300 hover:bg-amber-900 shadow-[0_0_12px_rgba(245,158,11,0.3)]')
+              }`}
+              title={`Qualidade Gráfica: ${(hudState.performanceMode === 'baixo' || hudState.performanceMode === 'light') ? 'BAIXO (60 FPS)' : (hudState.performanceMode === 'medio' ? 'MÉDIO (Equilibrado)' : 'ALTO (Ultra Godot/GTA)')} - Clique para alternar`}
+            >
+              <span>{(hudState.performanceMode === 'baixo' || hudState.performanceMode === 'light') ? '⚡' : (hudState.performanceMode === 'medio' ? '🎮' : '✨')}</span>
+              <span className="hidden sm:inline">
+                {(hudState.performanceMode === 'baixo' || hudState.performanceMode === 'light') ? 'BAIXO' : (hudState.performanceMode === 'medio' ? 'MÉDIO' : 'ALTO')}
+              </span>
+            </button>
+          )}
+
+          {/* BOTÃO PAINEL ADMINISTRATIVO (PIN 1234) */}
+          {onOpenAdminPanel && (
+            <button
+              onClick={onOpenAdminPanel}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-purple-500/80 text-purple-300 hover:text-white hover:bg-purple-950/60 flex items-center justify-center transition shadow active:scale-95"
+              title="Painel Administrativo da Loja e Economia (PIN 1234)"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400" />
+            </button>
+          )}
+
           <button
-            onClick={onTogglePerformanceMode}
-            className={`w-7 h-7 sm:w-auto sm:h-8 sm:px-2 rounded-lg border flex items-center justify-center gap-1 transition shadow font-mono text-[9px] sm:text-[10px] font-black active:scale-95 ${
-              hudState.performanceMode === 'light'
-                ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 hover:bg-emerald-900 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
-                : 'bg-slate-950/85 border-amber-400/80 text-amber-300 hover:bg-slate-900'
+            onClick={() => {
+              const nextMuted = !isMuted;
+              setIsMuted(nextMuted);
+              soundManager.setMuted(nextMuted);
+            }}
+            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border flex items-center justify-center transition shadow ${
+              isMuted 
+                ? 'bg-rose-950/90 border-rose-500 text-rose-300' 
+                : 'bg-slate-950/85 border-amber-500/80 text-amber-300 hover:bg-slate-900'
             }`}
-            title={
-              hudState.performanceMode === 'light'
-                ? "Modo Leve 60 FPS Nítido Ativo (Alta Resolução + Leve para Celular) - Clique para Modo Normal"
-                : "Modo Gráficos Altos Ativo - Clique para Modo Leve 60 FPS"
-            }
+            title={isMuted ? "Ativar Áudio do Jogo" : "Silenciar Áudio (Mute)"}
           >
-            <span>⚡</span>
-            <span className="hidden sm:inline">{hudState.performanceMode === 'light' ? '60 FPS' : 'ALTA'}</span>
+            {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
           </button>
-        )}
 
-        {/* BOTÃO PAINEL ADMINISTRATIVO (PIN 1234) */}
-        {onOpenAdminPanel && (
           <button
-            onClick={onOpenAdminPanel}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-purple-500/80 text-purple-300 hover:text-white hover:bg-purple-950/60 flex items-center justify-center transition shadow active:scale-95"
-            title="Painel Administrativo da Loja e Economia (PIN 1234)"
+            onClick={() => setShowSettingsModal(true)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-900 flex items-center justify-center transition shadow"
+            title="Configurações, Menu e Trabalhos"
           >
-            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400" />
+            <Settings className="w-3.5 h-3.5" />
           </button>
-        )}
 
+          {/* BOTÕES EXTRAS EXIBIDOS EM TELAS MAIORES (TABLET/PC) PARA EVITAR POLUIÇÃO NO CELULAR */}
+          <button
+            onClick={onOpenJobsModal}
+            className="hidden md:flex w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-emerald-500/80 text-emerald-400 hover:bg-slate-900 items-center justify-center transition shadow"
+            title="Ver Trabalhos da Cidade"
+          >
+            <Briefcase className="w-3.5 h-3.5" />
+          </button>
+          {onOpenCustomizer && (
+            <button
+              onClick={onOpenCustomizer}
+              className="hidden md:flex w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-cyan-500/80 text-cyan-400 hover:bg-slate-900 items-center justify-center transition shadow active:scale-95"
+              title="Personalizar Personagem (Nome, Roupas, Boné, Sapatos, Cabelo)"
+            >
+              <Shirt className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* BADGE DO CLIMA & CICLO DIA/NOITE NA HUD (ATUALIZA GRADUALMENTE COM O HORÁRIO E CLIMA) */}
         <button
-          onClick={() => {
-            const nextMuted = !isMuted;
-            setIsMuted(nextMuted);
-            soundManager.setMuted(nextMuted);
-          }}
-          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border flex items-center justify-center transition shadow ${
-            isMuted 
-              ? 'bg-rose-950/90 border-rose-500 text-rose-300' 
-              : 'bg-slate-950/85 border-amber-500/80 text-amber-300 hover:bg-slate-900'
+          onClick={() => onToggleDayNight?.()}
+          className={`px-2 py-0.5 rounded-full border flex items-center gap-1 shadow-lg transition active:scale-95 text-[9.5px] sm:text-[10.5px] font-mono font-bold ${
+            hudState.weather?.type === 'rainy'
+              ? 'bg-slate-900/90 border-sky-400/80 text-sky-200'
+              : hudState.weather?.isNight
+                ? 'bg-indigo-950/90 border-indigo-400/80 text-indigo-200'
+                : hudState.weather?.dayPhase === 'sunset' || hudState.weather?.dayPhase === 'dawn'
+                  ? 'bg-orange-950/90 border-amber-400/80 text-amber-200'
+                  : 'bg-sky-950/90 border-cyan-400/80 text-cyan-100'
           }`}
-          title={isMuted ? "Ativar Áudio do Jogo" : "Silenciar Áudio (Mute)"}
+          title={`${hudState.weather?.name || 'Ensolarado'} (${hudState.weather?.formattedTime || '10:00'}) - Toque para avançar Dia/Noite [T]`}
         >
-          {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+          <span className="text-xs sm:text-sm leading-none">{hudState.weather?.icon || '☀️'}</span>
+          <span>{hudState.weather?.formattedTime || '10:00'}</span>
+          <span className="hidden sm:inline opacity-80">• {hudState.weather?.name || 'Ensolarado'}</span>
         </button>
-
-        <button
-          onClick={() => setShowSettingsModal(true)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-900 flex items-center justify-center transition shadow"
-          title="Configurações, Menu e Trabalhos"
-        >
-          <Settings className="w-3.5 h-3.5" />
-        </button>
-
-        {/* BOTÕES EXTRAS EXIBIDOS EM TELAS MAIORES (TABLET/PC) PARA EVITAR POLUIÇÃO NO CELULAR */}
-        <button
-          onClick={onOpenJobsModal}
-          className="hidden md:flex w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-emerald-500/80 text-emerald-400 hover:bg-slate-900 items-center justify-center transition shadow"
-          title="Ver Trabalhos da Cidade"
-        >
-          <Briefcase className="w-3.5 h-3.5" />
-        </button>
-        {onOpenCustomizer && (
-          <button
-            onClick={onOpenCustomizer}
-            className="hidden md:flex w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950/85 border border-cyan-500/80 text-cyan-400 hover:bg-slate-900 items-center justify-center transition shadow active:scale-95"
-            title="Personalizar Personagem (Nome, Roupas, Boné, Sapatos, Cabelo)"
-          >
-            <Shirt className="w-3.5 h-3.5" />
-          </button>
-        )}
       </div>
 
       {/* NOTIFICAÇÃO DE LOCAL / DENTRO DA LOJA */}
@@ -538,22 +583,40 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
       {/* =========================================================================
           CANTO INFERIOR ESQUERDO: JOYSTICK ANALÓGICO + BOTÕES DE GIRO RÁPIDO
          ========================================================================= */}
-      <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 pointer-events-auto flex flex-col items-center gap-1 z-20 origin-bottom-left scale-90 sm:scale-100">
-        <div className="flex items-center gap-1.5">
+      <div className="absolute bottom-2.5 left-2.5 sm:bottom-4 sm:left-4 pointer-events-auto flex flex-col items-center gap-1 z-20 origin-bottom-left scale-[0.82] min-[400px]:scale-90 sm:scale-100">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           <button
             onClick={onTurnLeft}
             className="px-2 py-0.5 rounded-md bg-slate-950/85 border border-slate-700 hover:border-amber-400 active:scale-95 text-slate-200 text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-0.5 shadow transition"
-            title="Girar para Esquerda"
+            title="Girar Câmera para Esquerda"
           >
             <span>↶ ESQ</span>
           </button>
           <button
             onClick={onTurnRight}
             className="px-2 py-0.5 rounded-md bg-slate-950/85 border border-slate-700 hover:border-amber-400 active:scale-95 text-slate-200 text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-0.5 shadow transition"
-            title="Girar para Direita"
+            title="Girar Câmera para Direita"
           >
             <span>DIR ↷</span>
           </button>
+          {onCameraZoomIn && (
+            <button
+              onClick={onCameraZoomIn}
+              className="px-1.5 py-0.5 rounded-md bg-slate-950/85 border border-slate-700 hover:border-sky-400 active:scale-95 text-sky-300 text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-0.5 shadow transition"
+              title="Aproximar Câmera (Zoom In / Roda do Mouse)"
+            >
+              <span>+ ZOOM</span>
+            </button>
+          )}
+          {onCameraZoomOut && (
+            <button
+              onClick={onCameraZoomOut}
+              className="px-1.5 py-0.5 rounded-md bg-slate-950/85 border border-slate-700 hover:border-sky-400 active:scale-95 text-sky-300 text-[9px] sm:text-[10px] font-mono font-bold flex items-center gap-0.5 shadow transition"
+              title="Afastar Câmera (Zoom Out / Roda do Mouse)"
+            >
+              <span>- ZOOM</span>
+            </button>
+          )}
         </div>
 
         <div
@@ -563,15 +626,38 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
           onMouseUp={handleJoystickEnd}
           onMouseLeave={handleJoystickEnd}
           onTouchStart={(e) => {
-            const touch = e.touches[0];
-            if (touch) handleJoystickStart(touch.clientX, touch.clientY);
+            e.stopPropagation();
+            if (joystickTouchIdRef.current === null && e.changedTouches.length > 0) {
+              const touch = e.changedTouches[0];
+              joystickTouchIdRef.current = touch.identifier;
+              handleJoystickStart(touch.clientX, touch.clientY);
+            }
           }}
           onTouchMove={(e) => {
-            const touch = e.touches[0];
-            if (touch) handleJoystickDrag(touch.clientX, touch.clientY);
+            e.stopPropagation();
+            if (joystickTouchIdRef.current === null) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+              const touch = e.changedTouches[i];
+              if (touch.identifier === joystickTouchIdRef.current) {
+                handleJoystickDrag(touch.clientX, touch.clientY);
+                break;
+              }
+            }
           }}
-          onTouchEnd={handleJoystickEnd}
-          className="relative w-26 h-26 sm:w-30 sm:h-30 rounded-full bg-slate-900/85 border-2 border-slate-600/60 shadow-[0_0_20px_rgba(0,0,0,0.5)] flex items-center justify-center cursor-pointer active:border-amber-500/80 transition-colors"
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+              if (e.changedTouches[i].identifier === joystickTouchIdRef.current) {
+                handleJoystickEnd();
+                break;
+              }
+            }
+          }}
+          onTouchCancel={(e) => {
+            e.stopPropagation();
+            handleJoystickEnd();
+          }}
+          className="relative w-26 h-26 sm:w-30 sm:h-30 rounded-full bg-slate-900/85 border-2 border-slate-600/60 shadow-[0_0_20px_rgba(0,0,0,0.5)] flex items-center justify-center cursor-pointer active:border-amber-500/80 transition-colors touch-none"
         >
           <div className="absolute inset-2 rounded-full border border-dashed border-slate-500/30 pointer-events-none" />
 
@@ -590,7 +676,16 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
           CANTO INFERIOR DIREITO: PAINEL DE AÇÕES GTA UNIFICADO E RESPONSIVO
           (Mochila + Todas as Ações em layout compacto sem sobreposição ou corte de tela)
          ========================================================================= */}
-      <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 pointer-events-auto flex items-end gap-1.5 sm:gap-2 z-20 origin-bottom-right scale-90 sm:scale-100">
+      {/* AVISO DE CARRO AMASSADO (REPARAR NA OFICINA THEO LUCCA) */}
+      {hudState.isInCar && hudState.isCarDented && (
+        <div className="absolute bottom-24 right-3 sm:bottom-28 sm:right-4 z-20 pointer-events-auto bg-amber-500/95 text-slate-950 font-black px-2.5 py-1 rounded-xl border-2 border-white shadow-2xl flex items-center gap-1.5 text-[9.5px] sm:text-[11px] animate-bounce">
+          <span>💥</span>
+          <span>Carro Amassado! Vá até a Oficina Mecânica Theo Lucca (GPS) para consertar!</span>
+          <span>🔧</span>
+        </div>
+      )}
+
+      <div className="absolute bottom-2.5 right-2.5 sm:bottom-4 sm:right-4 pointer-events-auto flex items-end gap-1.5 sm:gap-2 z-20 origin-bottom-right scale-[0.82] min-[400px]:scale-90 sm:scale-100">
         
         {/* Coluna 1: Veículos e Buzina */}
         <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -758,6 +853,22 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
             </div>
 
             <div className="space-y-2 text-xs">
+              {onOpenLoginScreen && (
+                <button
+                  onClick={() => {
+                    setShowSettingsModal(false);
+                    onOpenLoginScreen();
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-600 text-white font-bold flex items-center justify-between transition shadow-md"
+                >
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 text-amber-300" />
+                    <span>Trocar Jogador / Tela de Início</span>
+                  </span>
+                  <span className="text-sm font-mono">&rarr;</span>
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   setShowSettingsModal(false);
@@ -840,46 +951,95 @@ export const GtaKidHUD: React.FC<GtaKidHUDProps> = ({
               )}
             </div>
 
-            {/* OPÇÕES DE DESEMPENHO (PC FRACO E ANDROID) */}
+            {/* OPÇÕES DE QUALIDADE GRÁFICA: BAIXO / MÉDIO / ALTO (ESTILO GODOT / GTA) */}
             <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
               <div className="text-[11px] font-bold text-amber-400 uppercase flex items-center justify-between">
                 <span className="flex items-center gap-1.5 font-['Rajdhani']">
-                  <span>⚡</span>
-                  Desempenho & Gráficos
+                  <span>🎮</span>
+                  GRÁFICO (GODOT / GTA 3D)
                 </span>
-                <span className="text-[9px] font-mono text-emerald-400 font-black">
-                  {hudState.performanceMode === 'light' ? '60 FPS (LEVE)' : 'ALTA FIDELIDADE'}
+                <span className="text-[9px] font-mono text-emerald-400 font-black uppercase">
+                  {(hudState.performanceMode === 'baixo' || hudState.performanceMode === 'light') ? 'BAIXO (60 FPS)' : (hudState.performanceMode === 'medio' ? 'MÉDIO' : 'ALTO')}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="grid grid-cols-3 gap-1.5 text-center">
                 <button
                   onClick={() => {
-                    if (hudState.performanceMode !== 'light') onTogglePerformanceMode?.();
+                    if (onSetPerformanceMode) onSetPerformanceMode('baixo');
+                    else if (hudState.performanceMode !== 'baixo' && hudState.performanceMode !== 'light') onTogglePerformanceMode?.();
                   }}
                   className={`p-2 rounded-xl border transition flex flex-col items-center gap-0.5 ${
-                    hudState.performanceMode === 'light'
+                    hudState.performanceMode === 'baixo' || hudState.performanceMode === 'light'
                       ? 'bg-emerald-600 text-slate-950 border-white shadow-lg font-black'
                       : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-emerald-400'
                   }`}
                 >
-                  <span className="text-xs font-bold">⚡ Modo Leve (60 FPS)</span>
-                  <span className="text-[8.5px] font-normal opacity-90 leading-tight">Para Android e PCs Fracos</span>
+                  <span className="text-xs font-bold">⚡ BAIXO</span>
+                  <span className="text-[7.5px] font-normal opacity-90 leading-tight">60 FPS Ultraleve</span>
                 </button>
                 <button
                   onClick={() => {
-                    if (hudState.performanceMode !== 'normal') onTogglePerformanceMode?.();
+                    if (onSetPerformanceMode) onSetPerformanceMode('medio');
+                    else onTogglePerformanceMode?.();
                   }}
                   className={`p-2 rounded-xl border transition flex flex-col items-center gap-0.5 ${
-                    hudState.performanceMode === 'normal'
+                    hudState.performanceMode === 'medio'
+                      ? 'bg-blue-600 text-white border-white shadow-lg font-black'
+                      : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-blue-400'
+                  }`}
+                >
+                  <span className="text-xs font-bold">🎮 MÉDIO</span>
+                  <span className="text-[7.5px] font-normal opacity-90 leading-tight">Equilibrado</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (onSetPerformanceMode) onSetPerformanceMode('alto');
+                    else if (hudState.performanceMode !== 'alto' && hudState.performanceMode !== 'normal') onTogglePerformanceMode?.();
+                  }}
+                  className={`p-2 rounded-xl border transition flex flex-col items-center gap-0.5 ${
+                    hudState.performanceMode === 'alto' || hudState.performanceMode === 'normal'
                       ? 'bg-amber-500 text-slate-950 border-white shadow-lg font-black'
                       : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-amber-400'
                   }`}
                 >
-                  <span className="text-xs font-bold">✨ Gráficos Altos</span>
-                  <span className="text-[8.5px] font-normal opacity-90 leading-tight">Sombras e Resolução Extra</span>
+                  <span className="text-xs font-bold">✨ ALTO</span>
+                  <span className="text-[7.5px] font-normal opacity-90 leading-tight">Ultra GTA/Godot</span>
                 </button>
               </div>
             </div>
+
+            {/* CONTROLE DO CICLO DIA/NOITE & CLIMA */}
+            {(onToggleDayNight || onToggleWeather) && (
+              <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
+                <div className="text-[11px] font-bold text-sky-400 uppercase flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-['Rajdhani']">
+                    <span>{hudState.weather?.icon || '☀️'}</span>
+                    CICLO DIA / NOITE & CLIMA
+                  </span>
+                  <span className="text-[9px] font-mono text-amber-300 font-black">
+                    {hudState.weather?.formattedTime || '10:00'} • {hudState.weather?.name || 'Ensolarado'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {onToggleDayNight && (
+                    <button
+                      onClick={onToggleDayNight}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-indigo-400/50 text-indigo-200 font-bold text-[10px] transition active:scale-95"
+                    >
+                      🌅 Avançar Dia / Noite
+                    </button>
+                  )}
+                  {onToggleWeather && (
+                    <button
+                      onClick={onToggleWeather}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-sky-400/50 text-sky-200 font-bold text-[10px] transition active:scale-95"
+                    >
+                      🌧️ Alternar Clima
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
               <div className="text-[11px] font-bold text-amber-400 uppercase flex items-center justify-between">

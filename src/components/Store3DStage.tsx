@@ -52,13 +52,57 @@ export const Store3DStage: React.FC<Store3DStageProps> = ({
     camera.position.set(0, 1.35, 3.8);
     camera.lookAt(0, 0.72, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
+    const isMobileDevice =
+      typeof navigator !== 'undefined' &&
+      /Android|iPhone|iPad|iPod|Mobile|wv/i.test(navigator.userAgent || '');
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: !isMobileDevice,
+        alpha: true,
+        powerPreference: isMobileDevice ? 'default' : 'high-performance',
+        failIfMajorPerformanceCaveat: false,
+      });
+    } catch {
+      try {
+        renderer = new THREE.WebGLRenderer({
+          antialias: false,
+          alpha: true,
+          powerPreference: 'default',
+          precision: 'mediump',
+        });
+      } catch (err) {
+        console.warn('Store3DStage WebGL unavailable:', err);
+        return;
+      }
+    }
+
+    const isSoftwareGl = (() => {
+      try {
+        const gl = renderer.getContext();
+        if (!gl) return true;
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
+        const gpu = String(gl.getParameter(param));
+        return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+      } catch {
+        return false;
+      }
+    })();
+
+    renderer.setSize(width, height, false);
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, isMobileDevice ? 1.5 : 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = !isSoftwareGl && !isMobileDevice;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.touchAction = 'none';
+    container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
     // 2. Iluminação com característica do jogo (Dia ensolarado na Cidade Real)
@@ -250,21 +294,24 @@ export const Store3DStage: React.FC<Store3DStageProps> = ({
     // Redimensionamento de tela
     const handleResize = () => {
       if (!container) return;
-      const w = container.clientWidth || 400;
-      const h = container.clientHeight || 450;
+      const w = Math.max(1, container.clientWidth || 400);
+      const h = Math.max(1, container.clientHeight || 450);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      renderer.setSize(w, h, false);
     };
 
     window.addEventListener('resize', handleResize);
+    const resizeObs = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(handleResize) : null;
+    resizeObs?.observe(container);
 
     // 7. Loop de Animação em Tempo Real (60 FPS)
-    let animationFrameId: number;
-    let clock = new THREE.Clock();
+    let animationFrameId = 0;
+    let isUnmounted = false;
+    const clock = new THREE.Clock();
 
     const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
+      if (isUnmounted) return;
       const elapsedTime = clock.getElapsedTime();
 
       // Aplica rotação suave do pedestal
@@ -303,13 +350,22 @@ export const Store3DStage: React.FC<Store3DStageProps> = ({
       }
 
       renderer.render(scene, camera);
+
+      if (isSoftwareGl) {
+        animationFrameId = window.setTimeout(animate, 80);
+      } else {
+        animationFrameId = requestAnimationFrame(animate);
+      }
     };
 
     animate();
 
     return () => {
+      isUnmounted = true;
       window.removeEventListener('resize', handleResize);
+      resizeObs?.disconnect();
       cancelAnimationFrame(animationFrameId);
+      clearTimeout(animationFrameId);
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);

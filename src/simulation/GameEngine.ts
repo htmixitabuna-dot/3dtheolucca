@@ -13,6 +13,8 @@ import { cityVoiceManager } from './voiceManager';
 import { economyManager } from './EconomyManager';
 import { BuildingManager } from './BuildingManager';
 import { PlayerWallet, InventoryItem } from '../types/economy';
+import { WeatherManager, WeatherType, WeatherStateInfo, DayCycleLighting } from './WeatherManager';
+import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
 export interface BackpackItem {
   id: string;
@@ -82,7 +84,10 @@ export interface CityHUDState {
   allCars: { x: number; z: number; colorName: string }[];
   allMotos: { x: number; z: number; colorName: string }[];
   expansionAnnouncement?: { name: string; desc: string } | null;
-  performanceMode: 'light' | 'normal';
+  performanceMode: 'baixo' | 'medio' | 'alto' | 'light' | 'normal';
+  graphicQuality: 'baixo' | 'medio' | 'alto';
+  isCarDented?: boolean;
+  cameraZoom?: number;
   characterCustomization: CharacterCustomization;
   characterName: string;
   // Sistema Completo de Economia & Construção
@@ -91,6 +96,8 @@ export interface CityHUDState {
   buildModeItem: InventoryItem | null;
   isBuildPlacementValid: boolean;
   nearestPlacedBuildingName?: string | null;
+  // Sistema de Clima Dinâmico (Ensolarado, Nublado, Chuvoso)
+  weather: WeatherStateInfo;
 }
 
 export interface GameEngineCallbacks {
@@ -167,6 +174,26 @@ export class GameEngine {
   // Sistema de Construção e Prédios do Jogador
   private buildingManager!: BuildingManager;
 
+  // Sistema de Clima Dinâmico & Ciclo Dia/Noite Gradual
+  private weatherManager!: WeatherManager;
+  private dayTimeHours = 10.0; // Inicia às 10:00 da manhã
+  private targetDayTimeHours: number | null = null;
+  private readonly fullDayCycleSeconds = 180; // Ciclo completo de 24h a cada 3 minutos
+  private lastDayPhase: 'dawn' | 'day' | 'sunset' | 'night' = 'day';
+  private dayCycleLighting: DayCycleLighting = {
+    skyColor: new THREE.Color(0x60a5fa),
+    fogColor: new THREE.Color(0x93c5fd),
+    fogDensity: 0.0052,
+    sunColor: new THREE.Color(0xfff8ea),
+    sunIntensity: 2.75,
+    skyLightColor: new THREE.Color(0xfffbeb),
+    groundLightColor: new THREE.Color(0x0284c7),
+    skyLightIntensity: 1.15,
+    cloudTint: new THREE.Color(0xffffff),
+    isNight: false,
+  };
+  private dayCycleExposure = 1.15;
+
   // Sistema de Expansão Dinâmica da Cidade
   private cityExpansionLevel = 1;
   private expansionAnnouncement: { name: string; desc: string } | null = null;
@@ -180,10 +207,17 @@ export class GameEngine {
   // Personalização do Personagem (Nome, Roupas, Boné, Sapatos, Mochila, Cabelo, etc.)
   private characterCustomization: CharacterCustomization = { ...DEFAULT_CHARACTER_CUSTOMIZATION };
 
-  // Modo de Desempenho (Leve / 60 FPS para PCs fracos e Android vs Normal)
-  private performanceMode: 'light' | 'normal' = 'light';
+  // Modo de Desempenho (BAIXO 60 FPS / MÉDIO Balanceado / ALTO Ultra Godot/GTA)
+  private performanceMode: 'baixo' | 'medio' | 'alto' = 'baixo';
 
-  // Loop & software GL guard
+  // Sistema de Câmera Livre & Zoom (Mouse Wheel, Pinch e Botões)
+  private cameraZoom = 1.0;
+  private cameraShake = 0;
+  private touchPinchStartDist = 0;
+  private initialPinchZoom = 1.0;
+
+  // Loop & mobile/software GL guard
+  private isMobileDevice = false;
   private isSoftwareGl = false;
   private frameId = 0;
   private isDestroyed = false;
@@ -191,6 +225,7 @@ export class GameEngine {
   private lastTime = 0;
   private stepTimer = 0;
   private hudThrottleTimer = 0;
+  private resizeObserver: ResizeObserver | null = null;
 
   private keysPressed: Record<string, boolean> = {};
 
@@ -201,12 +236,12 @@ export class GameEngine {
   }
 
   private init() {
-    const width = this.container.clientWidth || window.innerWidth;
-    const height = this.container.clientHeight || window.innerHeight;
+    const width = Math.max(1, this.container.clientWidth || window.innerWidth || 1280);
+    const height = Math.max(1, this.container.clientHeight || window.innerHeight || 720);
 
     // Carrega personalização salva do personagem (nome, roupas, boné, sapatos, mochila, cabelo)
     try {
-      const savedCustom = typeof localStorage !== 'undefined' ? localStorage.getItem('theo_lucca_customization') : null;
+      const savedCustom = safeGetItem('theo_lucca_customization');
       if (savedCustom) {
         this.characterCustomization = { ...DEFAULT_CHARACTER_CUSTOMIZATION, ...JSON.parse(savedCustom) };
       }
@@ -214,48 +249,93 @@ export class GameEngine {
       // ignore
     }
 
-    // Detecção de GPU de renderização por software
-    this.isSoftwareGl = (() => {
-      const gl = document.createElement('canvas').getContext('webgl2');
-      if (!gl) return true;
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
-      const gpu = String(gl.getParameter(param));
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
-      return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
-    })();
+    this.isMobileDevice =
+      typeof navigator !== 'undefined' &&
+      /Android|iPhone|iPad|iPod|Mobile|wv/i.test(navigator.userAgent || '');
 
-    // Preferência de desempenho: padrão 'light' garante 60 FPS sólido em celulares Android e computadores básicos
-    const savedPerf = typeof localStorage !== 'undefined' ? localStorage.getItem('theo_lucca_perf_mode') : null;
-    if (savedPerf === 'light' || savedPerf === 'normal') {
+    // Preferência de qualidade gráfica: padrão 'baixo' garante 60 FPS sólido em celulares Android e computadores básicos
+    const savedPerf = safeGetItem('theo_lucca_perf_mode');
+    if (savedPerf === 'baixo' || savedPerf === 'medio' || savedPerf === 'alto') {
       this.performanceMode = savedPerf;
+    } else if (savedPerf === 'light') {
+      this.performanceMode = 'baixo';
+    } else if (savedPerf === 'normal') {
+      this.performanceMode = 'alto';
     } else {
-      this.performanceMode = 'light';
+      this.performanceMode = 'baixo';
     }
 
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true, // Mantém as bordas perfeitamente lisas e nítidas
-      powerPreference: 'high-performance',
-    });
-    this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
+    // Cria o renderer diretamente (evita criar/perder um 2º contexto WebGL no Android) com fallback seguro
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: !this.isMobileDevice,
+        powerPreference: this.isMobileDevice ? 'default' : 'high-performance',
+        alpha: false,
+        stencil: false,
+        failIfMajorPerformanceCaveat: false,
+      });
+    } catch {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        powerPreference: 'default',
+        precision: 'mediump',
+        alpha: false,
+        stencil: false,
+      });
+    }
+
+    // Detecta renderização por software diretamente no contexto ativo
+    this.isSoftwareGl = (() => {
+      try {
+        const gl = this.renderer.getContext();
+        if (!gl) return true;
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
+        const gpu = String(gl.getParameter(param));
+        return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+      } catch {
+        return false;
+      }
+    })();
+
+    const maxInitDpr = this.isSoftwareGl ? 1 : (this.isMobileDevice ? 1.25 : 2.0);
+    this.renderer.setSize(width, height, false);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxInitDpr));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
 
+    // Garante que o canvas WebGL preencha 100% do mount container sem colapsar
+    this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.touchAction = 'none';
+
+    this.container.innerHTML = '';
     this.container.appendChild(this.renderer.domElement);
 
-    // Camera com alcance otimizado para culling de objetos distantes
+    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost, false);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored, false);
+
+    // Camera com alcance dinâmico para culling
     this.camera = new THREE.PerspectiveCamera(
       58,
       width / height,
       0.1,
-      this.performanceMode === 'light' ? 145 : 195
+      this.performanceMode === 'baixo' ? 145 : this.performanceMode === 'medio' ? 195 : 250
     );
 
     this.cityScene = createCityScene();
-    this.pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.cityScene.scene.environment = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    if (!this.isMobileDevice && !this.isSoftwareGl) {
+      try {
+        this.pmrem = new THREE.PMREMGenerator(this.renderer);
+        const roomEnv = new RoomEnvironment();
+        this.cityScene.scene.environment = this.pmrem.fromScene(roomEnv, 0.04).texture;
+        roomEnv.dispose();
+      } catch (err) {
+        console.warn('PMREM environment fallback:', err);
+      }
+    }
 
     this.phasesManager = new PhasesManager(this.cityScene.scene);
 
@@ -281,6 +361,38 @@ export class GameEngine {
     // Sincroniza saldo inicial de ouro com a carteira econômica segura
     this.money = economyManager.getWallet().gold;
 
+    // Inicializa o Sistema de Clima Dinâmico (Ensolarado, Nublado, Chuvoso)
+    this.weatherManager = new WeatherManager(
+      this.cityScene.scene,
+      this.cityScene.sunLight,
+      this.cityScene.skyLight,
+      (weatherInfo) => {
+        if (weatherInfo.type === 'rainy') {
+          this.dialogueText = '🌧️ Chuva refrescante na Cidade Real! Sinta as gotinhas!';
+          cityVoiceManager.speak('Theo Lucca', 'Olha, começou a chover! Que delícia de chuva!', 'male', false);
+        } else if (weatherInfo.type === 'cloudy') {
+          this.dialogueText = '☁️ O céu ficou nublado! Clima ameno e agradável!';
+          cityVoiceManager.speak('Theo Lucca', 'O céu encheu de nuvens! Clima fresquinho!', 'male', false);
+        } else if (weatherInfo.type === 'night') {
+          this.dialogueText = '🌙 A noite estrelada chegou! Postes e faróis acesos na cidade!';
+          cityVoiceManager.speak('Theo Lucca', 'Olha que noite linda! Os faróis e postes da cidade acenderam!', 'male', false);
+        } else {
+          this.dialogueText = '☀️ O sol radiante voltou a brilhar na Cidade Real!';
+          cityVoiceManager.speak('Theo Lucca', 'O sol abriu forte! Que dia lindo!', 'male', false);
+        }
+        this.dialogueTimer = 4.5;
+        this.dispatchHUDData();
+      }
+    );
+
+    // Sistema de Iluminação Noturna Dinâmica: liga postes de luz e faróis 3D dos carros à noite
+    this.weatherManager.setOnNightStateChanged((isNight) => {
+      this.cityScene.setStreetLights?.(isNight);
+      for (const car of this.cityScene.cars) {
+        car.setHeadlights?.(isNight);
+      }
+    });
+
     this.player = createTheoLuccaModel();
     this.player.root.position.copy(this.playerPos);
     this.player.root.rotation.y = this.playerRotationY;
@@ -289,13 +401,36 @@ export class GameEngine {
     // Sinaliza o primeiro objetivo de missão no mundo 3D (Oficina Mecânica)
     this.cityScene.setBeaconPosition(new THREE.Vector3(32, 0, -24));
 
+    // Posiciona a câmera imediatamente atrás do Theo no primeiro frame
+    this.updateCamera(10);
+
     // Aplica as diretrizes de desempenho
     this.applyPerformanceSettings(this.performanceMode);
+
+    if (!this.isSoftwareGl && !this.isMobileDevice) {
+      try {
+        this.renderer.compile(this.cityScene.scene, this.camera);
+      } catch (err) {
+        console.warn('Pre-compile shader warning:', err);
+      }
+    }
 
     window.addEventListener('resize', this.onWindowResize);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
 
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.onWindowResize());
+      this.resizeObserver.observe(this.container);
+    }
+
+    // Câmera Zoom via scroll do mouse e pinch no touchscreen
+    this.container.addEventListener('wheel', this.onWheel, { passive: false });
+    this.container.addEventListener('touchstart', this.onTouchStart, { passive: true });
+    this.container.addEventListener('touchmove', this.onTouchMove, { passive: true });
+    this.container.addEventListener('touchend', this.onTouchEnd, { passive: true });
+
+    this.dispatchHUDData();
     this.lastTime = performance.now();
     this.tick();
 
@@ -340,6 +475,55 @@ export class GameEngine {
   public turnCameraRight(step: number = 0.22) {
     this.cameraAngles.yaw -= step;
   }
+
+  public zoomIn(step = 0.15) {
+    this.cameraZoom = Math.max(0.45, this.cameraZoom - step);
+    this.dispatchHUDData();
+  }
+
+  public zoomOut(step = 0.15) {
+    this.cameraZoom = Math.min(2.4, this.cameraZoom + step);
+    this.dispatchHUDData();
+  }
+
+  public getCameraZoom(): number {
+    return this.cameraZoom;
+  }
+
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY * 0.0012;
+    this.cameraZoom = Math.max(0.45, Math.min(2.4, this.cameraZoom + zoomDelta));
+    this.dispatchHUDData();
+  };
+
+  private onTouchStart = (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      this.touchPinchStartDist = Math.hypot(dx, dy);
+      this.initialPinchZoom = this.cameraZoom;
+    }
+  };
+
+  private onTouchMove = (e: TouchEvent) => {
+    if (e.touches.length === 2 && this.touchPinchStartDist > 10) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 5) {
+        const ratio = this.touchPinchStartDist / dist;
+        this.cameraZoom = Math.max(0.45, Math.min(2.4, this.initialPinchZoom * ratio));
+        this.dispatchHUDData();
+      }
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent) => {
+    if (e.touches.length < 2) {
+      this.touchPinchStartDist = 0;
+    }
+  };
 
   public honkHorn() {
     soundManager.playCuteHorn();
@@ -845,6 +1029,17 @@ export class GameEngine {
     this.phasesManager.update(delta, now * 0.001);
     this.checkCourseCollectibles();
     this.checkPhaseMissionsAndTeleport(delta);
+
+    // Atualiza o Ciclo Contínuo Dia & Noite + Clima Dinâmico (sol orbital, iluminação gradual, nuvens, chuva)
+    this.updateDayNightCycle(delta);
+    if (this.weatherManager) {
+      this.weatherManager.update(delta, this.playerPos, this.dayCycleLighting);
+    }
+    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(
+      this.renderer.toneMappingExposure,
+      this.dayCycleExposure,
+      Math.min(1.0, delta * 3.0)
+    );
     
     this.hudThrottleTimer += delta;
     if (this.hudThrottleTimer >= 0.033) {
@@ -863,10 +1058,22 @@ export class GameEngine {
 
   private afterDraw(cb: () => void) {
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    if (!gl || typeof gl.fenceSync !== 'function') {
+      this.frameId = window.setTimeout(cb, 60);
+      return;
+    }
     const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!sync) {
+      this.frameId = window.setTimeout(cb, 60);
+      return;
+    }
     gl.flush();
     const poll = () => {
-      const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
+      if (this.isDestroyed || this.isPaused) {
+        gl.deleteSync(sync);
+        return;
+      }
+      const state = gl.getSyncParameter(sync, gl.SYNC_STATUS);
       if (state === gl.UNSIGNALED) {
         this.frameId = window.setTimeout(poll, 5);
       } else {
@@ -943,7 +1150,24 @@ export class GameEngine {
       // Colisão do carro com paredes, árvores e outros veículos (NÃO atravessa nada!)
       const collided = this.resolveCollisions(tentativePos, 1.4, car);
       if (collided) {
+        if (Math.abs(this.vehicleSpeed) > 1.8) {
+          const intensity = Math.min(1.0, Math.abs(this.vehicleSpeed) / 10);
+          soundManager.playCarCrash(intensity);
+          car.applyDent?.('front');
+          this.cameraShake = 0.5 * intensity;
+          this.dialogueText = '💥 Bateu o carro! Parachoque amassado! Vá até a Oficina Mecânica Theo Lucca para desamassar!';
+          this.dialogueTimer = 4.0;
+        }
         this.vehicleSpeed *= -0.25; // rebate suavemente sem atravessar
+      }
+
+      // Oficina Mecânica Theo Lucca: repara carro amassado automaticamente
+      const distToOficina = car.group.position.distanceTo(new THREE.Vector3(32, 0, -24));
+      if (distToOficina < 7.5 && (car.dentLevel ?? 0) > 0) {
+        car.repair?.();
+        soundManager.playCarRepair();
+        this.dialogueText = '🔧 Oficina Theo Lucca: Parachoque desamassado e polido com sucesso!';
+        this.dialogueTimer = 4.5;
       }
 
       car.group.position.copy(tentativePos);
@@ -1039,6 +1263,10 @@ export class GameEngine {
       // Colisão da moto com paredes, árvores e carros (NÃO atravessa nada!)
       const collided = this.resolveCollisions(tentativePos, 0.85, moto);
       if (collided) {
+        if (Math.abs(this.vehicleSpeed) > 2.2) {
+          soundManager.playCarCrash(0.5);
+          this.cameraShake = 0.35;
+        }
         this.vehicleSpeed *= -0.2;
       }
 
@@ -1172,14 +1400,14 @@ export class GameEngine {
   }
 
   private updateCamera(delta: number) {
-    let camDist = 3.8;
+    let camDist = 3.8 * this.cameraZoom;
 
     if (this.isInCar && this.currentPassengerCar) {
-      camDist = 7.2;
+      camDist = 7.2 * this.cameraZoom;
       const targetYaw = this.currentPassengerCar.rotationY + Math.PI;
       this.cameraAngles.yaw = THREE.MathUtils.damp(this.cameraAngles.yaw, targetYaw, 3.5, delta);
     } else if (this.isDrivingMoto && this.currentMotorcycle) {
-      camDist = 5.6;
+      camDist = 5.6 * this.cameraZoom;
       const targetYaw = this.currentMotorcycle.rotationY + Math.PI;
       this.cameraAngles.yaw = THREE.MathUtils.damp(this.cameraAngles.yaw, targetYaw, 4.2, delta);
     }
@@ -1198,6 +1426,14 @@ export class GameEngine {
       targetLookAt.y + Math.sin(pitch) * camDist,
       targetLookAt.z - Math.cos(yaw) * Math.cos(pitch) * camDist
     );
+
+    // Efeito de tremor de câmera ao bater veículo ou pular
+    if (this.cameraShake > 0.001) {
+      desiredCamPos.x += (Math.random() - 0.5) * this.cameraShake;
+      desiredCamPos.y += (Math.random() - 0.5) * this.cameraShake;
+      desiredCamPos.z += (Math.random() - 0.5) * this.cameraShake;
+      this.cameraShake = Math.max(0, this.cameraShake - delta * 3.0);
+    }
 
     this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, desiredCamPos.x, 14, delta);
     this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, desiredCamPos.y, 14, delta);
@@ -1579,6 +1815,9 @@ export class GameEngine {
       })),
       expansionAnnouncement: this.expansionAnnouncement,
       performanceMode: this.performanceMode,
+      graphicQuality: this.performanceMode,
+      isCarDented: this.isInCar && this.currentPassengerCar ? (this.currentPassengerCar.dentLevel || 0) > 0 : false,
+      cameraZoom: this.cameraZoom,
       characterCustomization: this.characterCustomization,
       characterName: this.characterCustomization.name || 'Theo Lucca',
       // Sistema de Economia & Construção
@@ -1587,6 +1826,7 @@ export class GameEngine {
       buildModeItem: this.buildingManager?.getActiveItem() || null,
       isBuildPlacementValid: (this.buildingManager as any)?.isCurrentPlacementValid ?? true,
       nearestPlacedBuildingName: this.buildingManager?.getNearestPlacedBuilding(this.playerPos, 5.0)?.name || null,
+      weather: this.getWeatherInfo(),
     });
   }
 
@@ -1600,13 +1840,40 @@ export class GameEngine {
       this.isRunningInput = true;
     }
     if (e.code === 'KeyE' || e.code === 'KeyF') {
-      this.tryInteractOrWork();
+      // Tecla E ou F: Entrar/Sair do carro ou moto se estiver perto, ou interagir/trabalhar
+      if (this.isInCar || this.isDrivingMoto) {
+        this.toggleCarRide();
+      } else {
+        let nearVeh = false;
+        for (const c of this.cityScene.cars) {
+          if (c.group.position.distanceTo(this.playerPos) < 5.5) { nearVeh = true; break; }
+        }
+        if (!nearVeh) {
+          for (const m of this.cityScene.motorcycles) {
+            if (m.group.position.distanceTo(this.playerPos) < 5.5) { nearVeh = true; break; }
+          }
+        }
+        if (nearVeh) {
+          this.toggleCarRide();
+        } else {
+          this.tryInteractOrWork();
+        }
+      }
     }
     if (e.code === 'KeyH') {
       this.honkHorn();
     }
     if (e.code === 'KeyC') {
       this.toggleCarRide();
+    }
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+      this.zoomIn();
+    }
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+      this.zoomOut();
+    }
+    if (e.code === 'KeyT') {
+      this.cycleDayNightPeriod();
     }
   };
 
@@ -1617,60 +1884,82 @@ export class GameEngine {
     }
   };
 
-  public applyPerformanceSettings(mode: 'light' | 'normal') {
-    this.performanceMode = mode;
-    try {
-      localStorage.setItem('theo_lucca_perf_mode', mode);
-    } catch {
-      // ignora se localStorage não estiver acessível
-    }
+  public applyPerformanceSettings(mode: 'baixo' | 'medio' | 'alto' | 'light' | 'normal') {
+    let normalized: 'baixo' | 'medio' | 'alto' = 'baixo';
+    if (mode === 'light' || mode === 'baixo') normalized = 'baixo';
+    else if (mode === 'medio') normalized = 'medio';
+    else if (mode === 'normal' || mode === 'alto') normalized = 'alto';
+
+    this.performanceMode = normalized;
+    safeSetItem('theo_lucca_perf_mode', normalized);
 
     if (!this.renderer || !this.camera) return;
 
-    // Resolução nítida e cristalina para não pixelar em celulares ou computadores
-    const sharpDPR = Math.min(window.devicePixelRatio || 1, 2.0);
-    this.renderer.setPixelRatio(sharpDPR);
-
-    if (mode === 'light') {
-      // Modo Leve 60 FPS: Desativa sombras dinâmicas de 100+ objetos (economiza GPU mantendo a resolução 100% nítida)
+    if (normalized === 'baixo') {
+      // BAIXO (60 FPS Ultraleve): Sem sombras dinâmicas, renderização rápida para celulares Android
       this.renderer.shadowMap.enabled = false;
       if (this.cityScene?.sunLight) {
         this.cityScene.sunLight.castShadow = false;
       }
-      this.camera.far = 150;
-    } else {
-      // Modo Normal: Sombras suaves PCF
+      this.camera.far = 145;
+      this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, this.isMobileDevice ? 1.15 : 1.25));
+    } else if (normalized === 'medio') {
+      // MÉDIO (Equilibrado): Sombras dinâmicas PCF 1024x1024 (ou 512x512 no celular)
       this.renderer.shadowMap.enabled = !this.isSoftwareGl;
       this.renderer.shadowMap.type = THREE.PCFShadowMap;
       if (this.cityScene?.sunLight) {
         this.cityScene.sunLight.castShadow = !this.isSoftwareGl;
+        const mapDim = this.isMobileDevice ? 512 : 1024;
+        this.cityScene.sunLight.shadow.mapSize.set(mapDim, mapDim);
       }
       this.camera.far = 195;
+      this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, this.isMobileDevice ? 1.35 : 1.5));
+    } else {
+      // ALTO (Godot / GTA Ultra): Sombras suaves PCFSoftShadowMap 2048x2048 (ou 1024x1024 no celular)
+      this.renderer.shadowMap.enabled = !this.isSoftwareGl;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      if (this.cityScene?.sunLight) {
+        this.cityScene.sunLight.castShadow = !this.isSoftwareGl;
+        const mapDim = this.isMobileDevice ? 1024 : 2048;
+        this.cityScene.sunLight.shadow.mapSize.set(mapDim, mapDim);
+        this.cityScene.sunLight.shadow.bias = -0.0003;
+      }
+      this.camera.far = 250;
+      this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, this.isMobileDevice ? 1.5 : 2.0));
     }
     this.camera.updateProjectionMatrix();
   }
 
-  public togglePerformanceMode(): 'light' | 'normal' {
-    const nextMode = this.performanceMode === 'light' ? 'normal' : 'light';
-    this.applyPerformanceSettings(nextMode);
-    this.dialogueText = nextMode === 'light' 
-      ? '⚡ Modo Leve (60 FPS Nítido) Ativado!' 
-      : '✨ Modo Gráficos Altos Ativado com sombras detalhadas!';
+  public setGraphicQuality(quality: 'baixo' | 'medio' | 'alto') {
+    this.applyPerformanceSettings(quality);
+    this.dialogueText = quality === 'baixo' 
+      ? '⚡ Gráfico BAIXO (60 FPS Rápido) ativado!' 
+      : quality === 'medio'
+        ? '🎮 Gráfico MÉDIO (Sombras Balanceadas) ativado!'
+        : '✨ Gráfico ALTO (Ultra Godot/GTA Realista) ativado!';
     this.dialogueTimer = 4.0;
     this.dispatchHUDData();
+  }
+
+  public togglePerformanceMode(): 'baixo' | 'medio' | 'alto' {
+    const cycle: Record<'baixo' | 'medio' | 'alto', 'baixo' | 'medio' | 'alto'> = {
+      baixo: 'medio',
+      medio: 'alto',
+      alto: 'baixo',
+    };
+    const nextMode = cycle[this.performanceMode] || 'baixo';
+    this.setGraphicQuality(nextMode);
     return nextMode;
   }
 
-  public getPerformanceMode(): 'light' | 'normal' {
+  public getPerformanceMode(): 'baixo' | 'medio' | 'alto' {
     return this.performanceMode;
   }
 
   public updateCharacterCustomization(newCustom: CharacterCustomization) {
     this.characterCustomization = { ...newCustom };
     try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('theo_lucca_customization', JSON.stringify(newCustom));
-      }
+      safeSetItem('theo_lucca_customization', JSON.stringify(newCustom));
     } catch {
       // ignore
     }
@@ -1745,14 +2034,252 @@ export class GameEngine {
     return this.buildingManager;
   }
 
+  // --- SISTEMA DE CICLO DIA E NOITE GRADUAL + CLIMA DINÂMICO ---
+  private static readonly DAY_NIGHT_KEYFRAMES = [
+    { h: 0.0, sky: 0x080f1e, fog: 0x0b1528, fogD: 0.0068, sun: 0x93c5fd, sunI: 0.36, hSky: 0x1e293b, hGnd: 0x090f1d, hI: 0.44, cloud: 0x334155, exp: 0.90 },
+    { h: 5.0, sky: 0x1e1b4b, fog: 0x312e81, fogD: 0.0072, sun: 0xfdba74, sunI: 0.55, hSky: 0x475569, hGnd: 0x1e293b, hI: 0.55, cloud: 0x94a3b8, exp: 0.96 },
+    { h: 6.5, sky: 0xfb923c, fog: 0xfdba74, fogD: 0.0065, sun: 0xfed7aa, sunI: 1.65, hSky: 0xfef3c7, hGnd: 0x475569, hI: 0.85, cloud: 0xfed7aa, exp: 1.06 },
+    { h: 9.0, sky: 0x60a5fa, fog: 0x93c5fd, fogD: 0.0052, sun: 0xfff8ea, sunI: 2.75, hSky: 0xfffbeb, hGnd: 0x0284c7, hI: 1.15, cloud: 0xffffff, exp: 1.15 },
+    { h: 15.5, sky: 0x60a5fa, fog: 0x93c5fd, fogD: 0.0052, sun: 0xfff3d6, sunI: 2.55, hSky: 0xfffbeb, hGnd: 0x0284c7, hI: 1.10, cloud: 0xffffff, exp: 1.14 },
+    { h: 17.75, sky: 0xea580c, fog: 0xfb923c, fogD: 0.0075, sun: 0xfdba74, sunI: 1.35, hSky: 0xfed7aa, hGnd: 0x334155, hI: 0.80, cloud: 0xfdba74, exp: 1.02 },
+    { h: 19.25, sky: 0x1e1b4b, fog: 0x1e293b, fogD: 0.0070, sun: 0x93c5fd, sunI: 0.50, hSky: 0x334155, hGnd: 0x0f172a, hI: 0.50, cloud: 0x475569, exp: 0.92 },
+    { h: 21.0, sky: 0x080f1e, fog: 0x0b1528, fogD: 0.0068, sun: 0x93c5fd, sunI: 0.36, hSky: 0x1e293b, hGnd: 0x090f1d, hI: 0.44, cloud: 0x334155, exp: 0.90 },
+    { h: 24.0, sky: 0x080f1e, fog: 0x0b1528, fogD: 0.0068, sun: 0x93c5fd, sunI: 0.36, hSky: 0x1e293b, hGnd: 0x090f1d, hI: 0.44, cloud: 0x334155, exp: 0.90 },
+  ];
+
+  private scratchColorA = new THREE.Color();
+  private scratchColorB = new THREE.Color();
+
+  private getDayPhaseFromHour(h: number): 'dawn' | 'day' | 'sunset' | 'night' {
+    if (h >= 5.25 && h < 7.25) return 'dawn';
+    if (h >= 7.25 && h < 16.75) return 'day';
+    if (h >= 16.75 && h < 19.0) return 'sunset';
+    return 'night';
+  }
+
+  private formatClockHour(h: number): string {
+    const normalized = ((h % 24) + 24) % 24;
+    const hrs = Math.floor(normalized);
+    const mins = Math.floor((normalized - hrs) * 60);
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+
+  private updateDayNightCycle(delta: number) {
+    if (this.targetDayTimeHours !== null) {
+      let diff = (this.targetDayTimeHours - this.dayTimeHours + 24) % 24;
+      if (diff < 0.08 || diff > 23.92) {
+        this.dayTimeHours = this.targetDayTimeHours;
+        this.targetDayTimeHours = null;
+      } else {
+        const step = Math.min(diff, delta * 3.8);
+        this.dayTimeHours = (this.dayTimeHours + step) % 24;
+      }
+    } else {
+      const autoEnabled = this.weatherManager ? this.weatherManager.getAutoCycle() : true;
+      if (autoEnabled) {
+        this.dayTimeHours = (this.dayTimeHours + (24 / this.fullDayCycleSeconds) * delta) % 24;
+      }
+    }
+
+    const h = this.dayTimeHours;
+    const frames = GameEngine.DAY_NIGHT_KEYFRAMES;
+    let k0 = frames[0];
+    let k1 = frames[1];
+    for (let i = 0; i < frames.length - 1; i++) {
+      if (h >= frames[i].h && h <= frames[i + 1].h) {
+        k0 = frames[i];
+        k1 = frames[i + 1];
+        break;
+      }
+    }
+    const span = Math.max(0.001, k1.h - k0.h);
+    const t = THREE.MathUtils.clamp((h - k0.h) / span, 0, 1);
+
+    this.dayCycleLighting.skyColor.lerpColors(this.scratchColorA.setHex(k0.sky), this.scratchColorB.setHex(k1.sky), t);
+    this.dayCycleLighting.fogColor.lerpColors(this.scratchColorA.setHex(k0.fog), this.scratchColorB.setHex(k1.fog), t);
+    this.dayCycleLighting.fogDensity = THREE.MathUtils.lerp(k0.fogD, k1.fogD, t);
+    this.dayCycleLighting.sunColor.lerpColors(this.scratchColorA.setHex(k0.sun), this.scratchColorB.setHex(k1.sun), t);
+    this.dayCycleLighting.sunIntensity = THREE.MathUtils.lerp(k0.sunI, k1.sunI, t);
+    this.dayCycleLighting.skyLightColor.lerpColors(this.scratchColorA.setHex(k0.hSky), this.scratchColorB.setHex(k1.hSky), t);
+    this.dayCycleLighting.groundLightColor.lerpColors(this.scratchColorA.setHex(k0.hGnd), this.scratchColorB.setHex(k1.hGnd), t);
+    this.dayCycleLighting.skyLightIntensity = THREE.MathUtils.lerp(k0.hI, k1.hI, t);
+    this.dayCycleLighting.cloudTint.lerpColors(this.scratchColorA.setHex(k0.cloud), this.scratchColorB.setHex(k1.cloud), t);
+    this.dayCycleLighting.isNight = h >= 18.6 || h < 5.75;
+    this.dayCycleExposure = THREE.MathUtils.lerp(k0.exp, k1.exp, t);
+
+    // Arco orbital gradual do Sol / Lua no céu 3D
+    if (this.cityScene?.sunLight) {
+      const sunAngle = ((h - 6) / 24) * Math.PI * 2;
+      this.cityScene.sunLight.position.set(
+        Math.cos(sunAngle) * 56,
+        Math.max(10, Math.sin(sunAngle) * 62),
+        26 + Math.sin(sunAngle * 0.5) * 14
+      );
+    }
+
+    const phase = this.getDayPhaseFromHour(h);
+    if (phase !== this.lastDayPhase) {
+      this.lastDayPhase = phase;
+      if (phase === 'sunset') {
+        this.dialogueText = '🌇 Entardecer dourado na Cidade Real! O sol está se pondo.';
+        this.dialogueTimer = 4.0;
+      } else if (phase === 'night') {
+        this.dialogueText = '🌙 A noite chegou! Postes e faróis dos carros acesos!';
+        this.dialogueTimer = 4.5;
+      } else if (phase === 'dawn') {
+        this.dialogueText = '🌅 Bom dia! O sol está nascendo na Cidade Real!';
+        this.dialogueTimer = 4.0;
+      } else {
+        this.dialogueText = '☀️ Dia ensolarado! Ótimo momento para explorar a cidade!';
+        this.dialogueTimer = 3.5;
+      }
+      this.dispatchHUDData();
+    }
+  }
+
+  public cycleDayNightPeriod() {
+    const phase = this.getDayPhaseFromHour(this.dayTimeHours);
+    if (phase === 'dawn') {
+      this.targetDayTimeHours = 11.0;
+    } else if (phase === 'day') {
+      this.targetDayTimeHours = 17.6;
+    } else if (phase === 'sunset') {
+      this.targetDayTimeHours = 21.5;
+    } else {
+      this.targetDayTimeHours = 6.2;
+    }
+    soundManager.playPopClick();
+    this.dispatchHUDData();
+  }
+
+  public setTimeOfDay(hours: number, smooth: boolean = true) {
+    const target = ((hours % 24) + 24) % 24;
+    if (smooth) {
+      this.targetDayTimeHours = target;
+    } else {
+      this.dayTimeHours = target;
+      this.targetDayTimeHours = null;
+      this.updateDayNightCycle(0);
+    }
+    this.dispatchHUDData();
+  }
+
+  public getDayTimeHours(): number {
+    return this.dayTimeHours;
+  }
+
+  // --- MÉTODOS DO SISTEMA DE CLIMA DINÂMICO ---
+  public setWeather(type: WeatherType) {
+    if (this.weatherManager) {
+      if (type === 'night') {
+        this.targetDayTimeHours = 21.5;
+      } else if (type === 'sunny' && (this.dayTimeHours >= 18.5 || this.dayTimeHours < 6.0)) {
+        this.targetDayTimeHours = 11.0;
+      }
+      this.weatherManager.setWeather(type, true);
+      this.dispatchHUDData();
+    }
+  }
+
+  public toggleWeather(): WeatherType {
+    if (this.weatherManager) {
+      const next = this.weatherManager.toggleWeather();
+      this.dispatchHUDData();
+      return next;
+    }
+    return 'sunny';
+  }
+
+  public setWeatherAutoCycle(enabled: boolean) {
+    if (this.weatherManager) {
+      this.weatherManager.setAutoCycle(enabled);
+      this.dispatchHUDData();
+    }
+  }
+
+  public getWeatherInfo(): WeatherStateInfo {
+    const base = this.weatherManager ? this.weatherManager.getWeatherInfo() : {
+      type: 'sunny' as WeatherType,
+      name: 'Ensolarado',
+      icon: '☀️',
+      description: 'Dia radiante com sol dourado e céu azul límpido',
+      autoCycle: true,
+    };
+
+    const h = this.dayTimeHours;
+    const dayPhase = this.getDayPhaseFromHour(h);
+    const isNight = dayPhase === 'night' || h >= 18.6 || h < 5.75;
+    const formattedTime = this.formatClockHour(h);
+
+    let icon = base.icon;
+    let name = base.name;
+    let dayPhaseLabel = 'Dia';
+
+    if (dayPhase === 'dawn') dayPhaseLabel = 'Amanhecer';
+    else if (dayPhase === 'day') dayPhaseLabel = 'Dia';
+    else if (dayPhase === 'sunset') dayPhaseLabel = 'Entardecer';
+    else dayPhaseLabel = 'Noite';
+
+    if (base.type === 'rainy') {
+      icon = '🌧️';
+      name = isNight ? 'Chuva Noturna' : 'Chuvoso';
+    } else if (base.type === 'cloudy') {
+      icon = isNight ? '☁️' : '⛅';
+      name = isNight ? 'Noite Nublada' : 'Nublado';
+    } else if (dayPhase === 'dawn') {
+      icon = '🌅';
+      name = 'Amanhecer';
+    } else if (dayPhase === 'sunset') {
+      icon = '🌇';
+      name = 'Entardecer';
+    } else if (dayPhase === 'night') {
+      icon = '🌙';
+      name = 'Noite Estrelada';
+    } else {
+      icon = '☀️';
+      name = 'Ensolarado';
+    }
+
+    return {
+      ...base,
+      icon,
+      name,
+      timeOfDay: h,
+      formattedTime,
+      dayPhase,
+      dayPhaseLabel,
+      isNight,
+    };
+  }
+
+  public getWeatherManager(): WeatherManager {
+    return this.weatherManager;
+  }
+
+  private onContextLost = (e: Event) => {
+    e.preventDefault();
+    this.pause();
+  };
+
+  private onContextRestored = () => {
+    this.onWindowResize();
+    this.resume();
+  };
+
   private onWindowResize = () => {
     if (!this.container || !this.renderer || !this.camera) return;
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
+    if (width <= 0 || height <= 0) return;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
+    this.renderer.setSize(width, height, false);
+    const maxDpr = this.isSoftwareGl
+      ? 1
+      : this.isMobileDevice
+        ? (this.performanceMode === 'baixo' ? 1.15 : this.performanceMode === 'medio' ? 1.35 : 1.5)
+        : (this.performanceMode === 'baixo' ? 1.25 : this.performanceMode === 'medio' ? 1.5 : 2.0);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
   };
 
   public pause() {
@@ -1764,7 +2291,9 @@ export class GameEngine {
   }
 
   public resume() {
-    if (!this.isPaused || this.isDestroyed) return;
+    if (this.isDestroyed) return;
+    this.onWindowResize();
+    if (!this.isPaused) return;
     this.isPaused = false;
     this.lastTime = performance.now();
     soundManager.resumeAll();
@@ -1783,11 +2312,25 @@ export class GameEngine {
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
 
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+
     window.removeEventListener('resize', this.onWindowResize);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
 
+    this.container?.removeEventListener('wheel', this.onWheel);
+    this.container?.removeEventListener('touchstart', this.onTouchStart);
+    this.container?.removeEventListener('touchmove', this.onTouchMove);
+    this.container?.removeEventListener('touchend', this.onTouchEnd);
+
+    if (this.renderer?.domElement) {
+      this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
+      this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
+    }
+
     this.pmrem?.dispose();
+    this.weatherManager?.dispose();
     this.renderer?.dispose();
 
     if (this.renderer?.domElement?.parentElement) {

@@ -8,6 +8,7 @@ import {
   InventoryCategory, 
   AdminPackage 
 } from '../types/economy';
+import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
 // Catálogo padrão de produtos da Esmeralda Store (Estilo Free Fire)
 const DEFAULT_STORE_PRODUCTS: StoreProduct[] = [
@@ -1175,11 +1176,9 @@ export class EconomyManager {
   }
 
   private loadState() {
-    if (typeof localStorage === 'undefined') return;
-
     // 1. Carrega Carteira
     try {
-      const savedWallet = localStorage.getItem('theo_lucca_wallet');
+      const savedWallet = safeGetItem('theo_lucca_wallet');
       if (savedWallet) {
         this.wallet = { ...this.wallet, ...JSON.parse(savedWallet) };
       }
@@ -1189,7 +1188,7 @@ export class EconomyManager {
 
     // 2. Carrega Transações
     try {
-      const savedTx = localStorage.getItem('theo_lucca_transactions');
+      const savedTx = safeGetItem('theo_lucca_transactions');
       if (savedTx) {
         this.transactions = JSON.parse(savedTx);
       }
@@ -1199,7 +1198,7 @@ export class EconomyManager {
 
     // 3. Carrega Catálogo de Produtos da Loja
     try {
-      const savedCatalog = localStorage.getItem('theo_lucca_store_catalog');
+      const savedCatalog = safeGetItem('theo_lucca_store_catalog');
       if (savedCatalog) {
         const loaded: StoreProduct[] = JSON.parse(savedCatalog);
         // Garante que novos produtos do DEFAULT_STORE_PRODUCTS sejam mesclados
@@ -1216,7 +1215,7 @@ export class EconomyManager {
 
     // 4. Carrega Inventário
     try {
-      const savedInv = localStorage.getItem('theo_lucca_inventory');
+      const savedInv = safeGetItem('theo_lucca_inventory');
       if (savedInv) {
         this.inventory = JSON.parse(savedInv);
       } else {
@@ -1270,7 +1269,7 @@ export class EconomyManager {
 
     // 5. Carrega Pacotes Administrativos
     try {
-      const savedPkgs = localStorage.getItem('theo_lucca_admin_packages');
+      const savedPkgs = safeGetItem('theo_lucca_admin_packages');
       if (savedPkgs) {
         this.packages = JSON.parse(savedPkgs);
       } else {
@@ -1284,7 +1283,7 @@ export class EconomyManager {
 
   private saveWallet() {
     try {
-      localStorage.setItem('theo_lucca_wallet', JSON.stringify(this.wallet));
+      safeSetItem('theo_lucca_wallet', JSON.stringify(this.wallet));
       this.onWalletChangeCallbacks.forEach((cb) => cb(this.wallet));
     } catch {}
   }
@@ -1293,25 +1292,25 @@ export class EconomyManager {
     try {
       // Guarda até as últimas 300 transações no log
       const trimmed = this.transactions.slice(-300);
-      localStorage.setItem('theo_lucca_transactions', JSON.stringify(trimmed));
+      safeSetItem('theo_lucca_transactions', JSON.stringify(trimmed));
     } catch {}
   }
 
   public saveProducts() {
     try {
-      localStorage.setItem('theo_lucca_store_catalog', JSON.stringify(this.products));
+      safeSetItem('theo_lucca_store_catalog', JSON.stringify(this.products));
     } catch {}
   }
 
   public saveInventory() {
     try {
-      localStorage.setItem('theo_lucca_inventory', JSON.stringify(this.inventory));
+      safeSetItem('theo_lucca_inventory', JSON.stringify(this.inventory));
     } catch {}
   }
 
   public savePackages() {
     try {
-      localStorage.setItem('theo_lucca_admin_packages', JSON.stringify(this.packages));
+      safeSetItem('theo_lucca_admin_packages', JSON.stringify(this.packages));
     } catch {}
   }
 

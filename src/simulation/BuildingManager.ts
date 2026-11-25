@@ -3,6 +3,7 @@ import { PlacedBuilding, InventoryItem } from '../types/economy';
 import { createBuildingMesh } from './buildingModels';
 import { economyManager } from './EconomyManager';
 import { BoxCollider } from './CityScene';
+import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
 export interface BuildingManagerCallbacks {
   onBuildingPlaced?: (building: PlacedBuilding) => void;
@@ -52,9 +53,8 @@ export class BuildingManager {
   }
 
   private loadPlacedBuildings() {
-    if (typeof localStorage === 'undefined') return;
     try {
-      const saved = localStorage.getItem('theo_lucca_placed_buildings');
+      const saved = safeGetItem('theo_lucca_placed_buildings');
       if (saved) {
         const list: PlacedBuilding[] = JSON.parse(saved);
         list.forEach((b) => this.instantiatePlacedBuilding(b, false));
@@ -66,7 +66,7 @@ export class BuildingManager {
 
   private savePlacedBuildings() {
     try {
-      localStorage.setItem('theo_lucca_placed_buildings', JSON.stringify(this.placedBuildings));
+      safeSetItem('theo_lucca_placed_buildings', JSON.stringify(this.placedBuildings));
     } catch {}
   }
 

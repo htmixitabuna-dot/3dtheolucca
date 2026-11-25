@@ -12,7 +12,7 @@ function finalizeTexture(tex: THREE.CanvasTexture): THREE.CanvasTexture {
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
-  tex.anisotropy = 4;
+  tex.anisotropy = 2;
   return tex;
 }
 
@@ -258,3 +258,82 @@ export function createWoodFloorTexture(): THREE.CanvasTexture {
 
   return finalizeTexture(new THREE.CanvasTexture(canvas));
 }
+
+// 8. Textura de Fachada de Edifício Moderno / Arranha-céu com Vidraças e Concreto
+export function createSkyscraperFacadeTexture(baseColor: string = '#1e293b'): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Grelha de janelas arquitetônicas realistas com reflexos e iluminação interna
+  const cols = 4;
+  const rows = 8;
+  const padX = 8;
+  const padY = 6;
+  const winW = (256 - padX * (cols + 1)) / cols;
+  const winH = (256 - padY * (rows + 1)) / rows;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const wx = padX + c * (winW + padX);
+      const wy = padY + r * (winH + padY);
+
+      // Moldura da janela metálica
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(wx - 1, wy - 1, winW + 2, winH + 2);
+
+      // Vidro com reflexo celeste ou luz interna quente
+      const hasLight = Math.random() > 0.45;
+      if (hasLight) {
+        ctx.fillStyle = Math.random() > 0.5 ? '#fef08a' : '#fed7aa'; // Luz de escritório acesa
+      } else {
+        const grad = ctx.createLinearGradient(wx, wy, wx + winW, wy + winH);
+        grad.addColorStop(0, '#38bdf8');
+        grad.addColorStop(0.5, '#0284c7');
+        grad.addColorStop(1, '#0c4a6e');
+        ctx.fillStyle = grad;
+      }
+      ctx.fillRect(wx, wy, winW, winH);
+
+      // Divisória / montante da janela
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+      ctx.fillRect(wx + winW / 2 - 0.5, wy, 1, winH);
+    }
+  }
+
+  return finalizeTexture(new THREE.CanvasTexture(canvas));
+}
+
+// 9. Textura de Telhas Cerâmicas para Casas e Lojas
+export function createRoofTileTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#b45309';
+  ctx.fillRect(0, 0, 256, 256);
+
+  const tileH = 20;
+  const tileW = 32;
+  for (let y = 0; y < 256; y += tileH) {
+    const isOdd = Math.floor(y / tileH) % 2 === 1;
+    const shift = isOdd ? tileW / 2 : 0;
+    for (let x = -tileW; x < 256 + tileW; x += tileW) {
+      const tx = x + shift;
+      const grad = ctx.createLinearGradient(tx, y, tx, y + tileH);
+      grad.addColorStop(0, '#d97706');
+      grad.addColorStop(0.7, '#b45309');
+      grad.addColorStop(1, '#78350f');
+      ctx.fillStyle = grad;
+      ctx.fillRect(tx, y, tileW - 2, tileH - 1);
+    }
+  }
+
+  return finalizeTexture(new THREE.CanvasTexture(canvas));
+}
+

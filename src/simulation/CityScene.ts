@@ -33,6 +33,16 @@ export interface CityCar {
   stoppedByRedLight: boolean;
   stoppedByPedestrian: boolean;
   hasTheoPassenger: boolean;
+  frontBumperMesh?: THREE.Mesh;
+  carBodyMesh?: THREE.Mesh;
+  headlightBeamL?: THREE.Mesh;
+  headlightBeamR?: THREE.Mesh;
+  headlightMeshL?: THREE.Mesh;
+  headlightMeshR?: THREE.Mesh;
+  dentLevel?: number;
+  applyDent?: (direction?: 'front' | 'rear' | 'side') => void;
+  repair?: () => void;
+  setHeadlights?: (on: boolean) => void;
 }
 
 export interface CityMoto {
@@ -131,6 +141,8 @@ export interface CitySceneObjects {
   // Sistema de Expansão Dinâmica da Cidade
   expansionLevel: number;
   expandCity: (newLevel: number) => { name: string; desc: string; unlockedFeatures: string[] };
+  streetLamps: { position: THREE.Vector3; glowMesh: THREE.Mesh; bulbMesh: THREE.Mesh }[];
+  setStreetLights: (on: boolean) => void;
 }
 
 export function createCityScene(): CitySceneObjects {
@@ -368,13 +380,28 @@ export function createCityScene(): CitySceneObjects {
   addSidewalkBlock(-29, -78, 44, 38); // Quarteirão Residencial (Casas)
   addSidewalkBlock(-29, 78, 44, 38);  // Quarteirão Escola Infantil & Playground
 
-  // --- POSTES DE ILUMINAÇÃO PÚBLICA REALISTAS COM LUMINÁRIAS ---
+  // --- POSTES DE ILUMINAÇÃO PÚBLICA REALISTAS COM LUMINÁRIAS E ILUMINAÇÃO NOTURNA ---
   const lampPositions = [
     [-7.0, -18], [-7.0, 18], [-7.0, 36], [-7.0, -36],
     [7.0, -18], [7.0, 18], [7.0, 36], [7.0, -36],
     [-24, -7.0], [24, -7.0], [-24, 7.0], [24, 7.0],
     [50, -25], [50, 25], [-50, -25], [-50, 25],
   ];
+
+  const streetLamps: { position: THREE.Vector3; glowMesh: THREE.Mesh; bulbMesh: THREE.Mesh }[] = [];
+  let isStreetNightOn = false;
+
+  // Luzes compartilhadas (Pool de luzes para ficar muito abaixo do limite de shaders WebGL)
+  const streetPoolLight = new THREE.PointLight(0xfff099, 0, 26, 1.6);
+  streetPoolLight.position.set(0, 4.6, 0);
+  scene.add(streetPoolLight);
+
+  const interiorPoolLight = new THREE.PointLight(0xfffbeb, 1.5, 22);
+  interiorPoolLight.position.set(-20, 5.2, -24);
+  scene.add(interiorPoolLight);
+
+  const lampGlowGeo = new THREE.CircleGeometry(4.2, 14);
+  lampGlowGeo.rotateX(-Math.PI / 2);
 
   lampPositions.forEach(([lx, lz]) => {
     const lampGroup = new THREE.Group();
@@ -399,15 +426,48 @@ export function createCityScene(): CitySceneObjects {
     const bulbMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xfef08a,
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 0.8,
       roughness: 0.1,
     });
     const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-    bulb.position.set(lx > 0 ? -0.8 : 0.8, 4.65, 0);
+    const bulbX = lx > 0 ? -0.8 : 0.8;
+    bulb.position.set(bulbX, 4.65, 0);
     lampGroup.add(bulb);
 
+    // Halo de luz no chão à noite (zero custo de uniformes WebGL)
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const glowMesh = new THREE.Mesh(lampGlowGeo, glowMat);
+    glowMesh.position.set(bulbX, 0.04, 0);
+    lampGroup.add(glowMesh);
+
+    streetLamps.push({
+      position: new THREE.Vector3(lx + bulbX, 4.5, lz),
+      glowMesh,
+      bulbMesh: bulb,
+    });
     scene.add(lampGroup);
   });
+
+  const setStreetLights = (on: boolean) => {
+    isStreetNightOn = on;
+    streetPoolLight.intensity = on ? 2.2 : 0;
+    const bulbEmissive = on ? 2.8 : 0.4;
+    const glowOpacity = on ? 0.22 : 0;
+    streetLamps.forEach(({ glowMesh, bulbMesh }) => {
+      if (glowMesh.material) {
+        (glowMesh.material as THREE.MeshBasicMaterial).opacity = glowOpacity;
+      }
+      if (bulbMesh.material) {
+        (bulbMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = bulbEmissive;
+      }
+    });
+  };
 
   // --- SEMÁFOROS FUNCIONAIS REALISTAS ---
   const trafficLights: TrafficLight[] = [];
@@ -795,10 +855,13 @@ export function createCityScene(): CitySceneObjects {
     roof.castShadow = true;
     buildingGroup.add(roof);
 
-    // Iluminação Interna Realista
-    const interiorLight = new THREE.PointLight(0xfffbeb, 1.6, config.size.x * 1.4);
-    interiorLight.position.set(0, h - 0.9, 0);
-    buildingGroup.add(interiorLight);
+    // Iluminação Interna Emissiva no Teto (usa o interiorPoolLight dinâmico da cena)
+    const ceilingLamp = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 0.12, 1.6),
+      new THREE.MeshBasicMaterial({ color: 0xfffbeb })
+    );
+    ceilingLamp.position.set(0, h - 0.12, 0);
+    buildingGroup.add(ceilingLamp);
 
     // Decoração e mobiliário especializado
     config.interiorDecor(buildingGroup);
@@ -887,9 +950,12 @@ export function createCityScene(): CitySceneObjects {
       oven.castShadow = true;
       group.add(oven);
 
-      const fireLight = new THREE.PointLight(0xf97316, 2.8, 8.0);
-      fireLight.position.set(5.0, 1.2, -4.5);
-      group.add(fireLight);
+      const fireGlow = new THREE.Mesh(
+        new THREE.ConeGeometry(0.55, 0.9, 10),
+        new THREE.MeshBasicMaterial({ color: 0xf97316 })
+      );
+      fireGlow.position.set(5.0, 0.75, -4.3);
+      group.add(fireGlow);
 
       // Mesas italianas com cadeiras
       for (let m = -1; m <= 1; m += 2) {
@@ -2170,7 +2236,29 @@ export function createCityScene(): CitySceneObjects {
 
   const cars: CityCar[] = [];
 
-  const createDetailedCar = (cfg: typeof carConfigs[0]): { group: THREE.Group; wheels: THREE.Mesh[] } => {
+  const activeCarSpotTargetL = new THREE.Object3D();
+  const activeCarSpotTargetR = new THREE.Object3D();
+  scene.add(activeCarSpotTargetL);
+  scene.add(activeCarSpotTargetR);
+
+  const activeCarSpotL = new THREE.SpotLight(0xfff8db, 0, 32, Math.PI / 6.5, 0.45, 1.6);
+  activeCarSpotL.target = activeCarSpotTargetL;
+  scene.add(activeCarSpotL);
+
+  const activeCarSpotR = new THREE.SpotLight(0xfff8db, 0, 32, Math.PI / 6.5, 0.45, 1.6);
+  activeCarSpotR.target = activeCarSpotTargetR;
+  scene.add(activeCarSpotR);
+
+  const createDetailedCar = (cfg: typeof carConfigs[0]): {
+    group: THREE.Group;
+    wheels: THREE.Mesh[];
+    frontBumper: THREE.Mesh;
+    carBody: THREE.Mesh;
+    headL: THREE.Mesh;
+    headR: THREE.Mesh;
+    beamL: THREE.Mesh;
+    beamR: THREE.Mesh;
+  } => {
     const carGroup = new THREE.Group();
 
     // Chassi com pintura automotiva metálica brilhante e design aerodinâmico
@@ -2339,29 +2427,99 @@ export function createCityScene(): CitySceneObjects {
       wheels.push(wheel);
     });
 
+    // 5. Feixes visuais de farol (cones aditivos leves que acendem à noite)
+    const beamGeo = new THREE.ConeGeometry(1.15, 7.5, 10, 1, true);
+    beamGeo.translate(0, -3.75, 0);
+    beamGeo.rotateX(-Math.PI / 2);
+
+    const beamMatL = new THREE.MeshBasicMaterial({
+      color: 0xfff8db,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const beamL = new THREE.Mesh(beamGeo, beamMatL);
+    beamL.position.set(-0.82, 0.7, 2.3);
+    carGroup.add(beamL);
+
+    const beamMatR = beamMatL.clone();
+    const beamR = new THREE.Mesh(beamGeo, beamMatR);
+    beamR.position.set(0.82, 0.7, 2.3);
+    carGroup.add(beamR);
+
     scene.add(carGroup);
-    return { group: carGroup, wheels };
+    return {
+      group: carGroup,
+      wheels,
+      frontBumper,
+      carBody,
+      headL,
+      headR,
+      beamL,
+      beamR,
+    };
   };
 
   carConfigs.forEach((cfg) => {
-    const { group, wheels } = createDetailedCar(cfg);
+    const carData = createDetailedCar(cfg);
     const startPos = cfg.route[cfg.startWp].clone();
-    group.position.copy(startPos);
+    carData.group.position.copy(startPos);
 
-    cars.push({
-      group,
+    const carItem: CityCar = {
+      group: carData.group,
       colorName: cfg.name,
       speed: 7.2,
       maxSpeed: 7.8,
       waypoints: cfg.route,
       currentWpIndex: (cfg.startWp + 1) % cfg.route.length,
       rotationY: 0,
-      wheels,
+      wheels: carData.wheels,
       honkCooldown: 0,
       stoppedByRedLight: false,
       stoppedByPedestrian: false,
       hasTheoPassenger: false,
-    });
+      frontBumperMesh: carData.frontBumper,
+      carBodyMesh: carData.carBody,
+      headlightBeamL: carData.beamL,
+      headlightBeamR: carData.beamR,
+      headlightMeshL: carData.headL,
+      headlightMeshR: carData.headR,
+      dentLevel: 0,
+      applyDent: (_dir = 'front') => {
+        carItem.dentLevel = Math.min(3, (carItem.dentLevel || 0) + 1);
+        const lvl = carItem.dentLevel;
+        if (carData.frontBumper) {
+          carData.frontBumper.position.z = 2.28 - lvl * 0.12;
+          carData.frontBumper.rotation.x = -0.1 * lvl;
+          carData.frontBumper.rotation.y = (Math.random() - 0.5) * 0.14 * lvl;
+        }
+        if (carData.carBody) {
+          carData.carBody.scale.z = 1.0 - lvl * 0.035;
+        }
+      },
+      repair: () => {
+        carItem.dentLevel = 0;
+        if (carData.frontBumper) {
+          carData.frontBumper.position.set(0, 0.42, 2.28);
+          carData.frontBumper.rotation.set(0, 0, 0);
+        }
+        if (carData.carBody) {
+          carData.carBody.scale.set(1, 1, 1);
+        }
+      },
+      setHeadlights: (on: boolean) => {
+        const beamOpacity = on ? 0.18 : 0;
+        if (carData.beamL?.material) (carData.beamL.material as THREE.MeshBasicMaterial).opacity = beamOpacity;
+        if (carData.beamR?.material) (carData.beamR.material as THREE.MeshBasicMaterial).opacity = beamOpacity;
+        const emissiveIntensity = on ? 3.2 : 0.8;
+        if (carData.headL?.material) (carData.headL.material as THREE.MeshStandardMaterial).emissiveIntensity = emissiveIntensity;
+        if (carData.headR?.material) (carData.headR.material as THREE.MeshStandardMaterial).emissiveIntensity = emissiveIntensity;
+      },
+    };
+
+    cars.push(carItem);
   });
 
   // =========================================================================
@@ -3673,6 +3831,66 @@ export function createCityScene(): CitySceneObjects {
         cl.position.x = -130;
       }
     }
+
+    // 7. Atualiza luzes dinâmicas compartilhadas (poste + interior + faróis SpotLight do carro ativo)
+    if (isStreetNightOn) {
+      let nearestLamp = streetLamps[0];
+      let minLampDistSq = Infinity;
+      for (const lamp of streetLamps) {
+        const dx = lamp.position.x - theoPos.x;
+        const dz = lamp.position.z - theoPos.z;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < minLampDistSq) {
+          minLampDistSq = dSq;
+          nearestLamp = lamp;
+        }
+      }
+      if (nearestLamp) {
+        streetPoolLight.position.copy(nearestLamp.position);
+      }
+
+      const activeCar = cars.find((c) => c.hasTheoPassenger) || cars[0];
+      if (activeCar) {
+        const sinY = Math.sin(activeCar.rotationY);
+        const cosY = Math.cos(activeCar.rotationY);
+        const rightX = cosY;
+        const rightZ = -sinY;
+        const cp = activeCar.group.position;
+
+        activeCarSpotL.position.set(cp.x + sinY * 2.3 - rightX * 0.82, 0.85, cp.z + cosY * 2.3 - rightZ * 0.82);
+        activeCarSpotTargetL.position.set(cp.x + sinY * 18 - rightX * 0.8, 0, cp.z + cosY * 18 - rightZ * 0.8);
+
+        activeCarSpotR.position.set(cp.x + sinY * 2.3 + rightX * 0.82, 0.85, cp.z + cosY * 2.3 + rightZ * 0.82);
+        activeCarSpotTargetR.position.set(cp.x + sinY * 18 + rightX * 0.8, 0, cp.z + cosY * 18 + rightZ * 0.8);
+
+        activeCarSpotL.intensity = 3.2;
+        activeCarSpotR.intensity = 3.2;
+      }
+    } else {
+      activeCarSpotL.intensity = 0;
+      activeCarSpotR.intensity = 0;
+    }
+
+    // Luz interior compartilhada segue a loja mais próxima
+    let nearestShopPos: THREE.Vector3 | null = null;
+    let minShopDistSq = 28 * 28;
+    for (const loc of locations) {
+      if (loc.category === 'shop' || loc.category === 'job') {
+        const dx = loc.position.x - theoPos.x;
+        const dz = loc.position.z - theoPos.z;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < minShopDistSq) {
+          minShopDistSq = dSq;
+          nearestShopPos = loc.position;
+        }
+      }
+    }
+    if (nearestShopPos) {
+      interiorPoolLight.position.set(nearestShopPos.x, 5.2, nearestShopPos.z);
+      interiorPoolLight.intensity = 1.5;
+    } else {
+      interiorPoolLight.intensity = 0;
+    }
   };
 
   return {
@@ -3699,5 +3917,7 @@ export function createCityScene(): CitySceneObjects {
     updateCity,
     expansionLevel: currentExpansionLevel,
     expandCity,
+    streetLamps,
+    setStreetLights,
   };
 }

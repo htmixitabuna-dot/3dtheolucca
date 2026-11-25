@@ -19,6 +19,7 @@ import { MixamoGuideModal } from './components/MixamoGuideModal';
 import { EsmeraldaStoreModal } from './components/EsmeraldaStoreModal';
 import { CategorizedInventoryModal } from './components/CategorizedInventoryModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
+import { LoginScreen, SavedPlayerProfile } from './components/LoginScreen';
 import { economyManager } from './simulation/EconomyManager';
 import { InventoryItem, StoreProduct } from './types/economy';
 
@@ -39,7 +40,9 @@ export default function App() {
   const [showEsmeraldaStoreModal, setShowEsmeraldaStoreModal] = useState(false);
   const [showCategorizedInventoryModal, setShowCategorizedInventoryModal] = useState(false);
   const [showAdminPanelModal, setShowAdminPanelModal] = useState(false);
+  const [showLoginScreen, setShowLoginScreen] = useState(true);
   const [victoryMission, setVictoryMission] = useState<{ title: string; reward: number } | null>(null);
+  const [webglError, setWebglError] = useState<string | null>(null);
 
   // Estado da HUD da Cidade (Com R$ 3.00 inicial e Missão 1)
   const [hudState, setHudState] = useState<CityHUDState>({
@@ -82,7 +85,10 @@ export default function App() {
     allCars: [],
     allMotos: [],
     expansionAnnouncement: null,
-    performanceMode: 'light',
+    performanceMode: 'baixo',
+    graphicQuality: 'baixo',
+    isCarDented: false,
+    cameraZoom: 1.0,
     characterCustomization: DEFAULT_CHARACTER_CUSTOMIZATION,
     characterName: 'Theo Lucca',
     wallet: economyManager.getWallet(),
@@ -90,114 +96,159 @@ export default function App() {
     buildModeItem: null,
     isBuildPlacementValid: false,
     nearestPlacedBuildingName: null,
+    weather: {
+      type: 'sunny',
+      name: 'Ensolarado',
+      icon: '☀️',
+      description: 'Dia radiante com sol dourado e céu azul límpido na Cidade Real',
+      autoCycle: true,
+      timeOfDay: 10.0,
+      formattedTime: '10:00',
+      dayPhase: 'day',
+      dayPhaseLabel: 'Dia',
+      isNight: false,
+    },
   });
 
-  // Inicialização do GameEngine Three.js
+  const latestCustomizationRef = useRef(hudState.characterCustomization);
+  latestCustomizationRef.current = hudState.characterCustomization;
+  const showLoginScreenRef = useRef(showLoginScreen);
+  showLoginScreenRef.current = showLoginScreen;
+
+  const triggerConfetti = (opts: confetti.Options) => {
+    try {
+      confetti(opts);
+    } catch {
+      // ignore on restricted WebViews
+    }
+  };
+
+  // Inicialização do GameEngine Three.js após o primeiro frame de pintura (evita travar a tela inicial)
   useEffect(() => {
     if (!canvasMountRef.current) return;
 
-    const engine = new GameEngine(canvasMountRef.current, {
-      onHUDUpdate: (newState) => {
-        setHudState(newState);
-      },
-      onCoinCollected: (_val, _newTotal) => {
-        confetti({
-          particleCount: 22,
-          spread: 45,
-          origin: { y: 0.8 },
-          colors: ['#facc15', '#f59e0b', '#fbbf24'],
+    let disposed = false;
+    let engine: GameEngine | null = null;
+    const rafId = requestAnimationFrame(() => {
+      if (disposed || !canvasMountRef.current) return;
+      try {
+        engine = new GameEngine(canvasMountRef.current, {
+          onHUDUpdate: (newState) => {
+            setHudState(newState);
+          },
+          onCoinCollected: (_val, _newTotal) => {
+            triggerConfetti({
+              particleCount: 22,
+              spread: 45,
+              origin: { y: 0.8 },
+              colors: ['#facc15', '#f59e0b', '#fbbf24'],
+            });
+          },
+          onJobCompleted: (_jobName, _reward) => {
+            triggerConfetti({
+              particleCount: 75,
+              spread: 70,
+              origin: { y: 0.6 },
+              colors: ['#22c55e', '#38bdf8', '#fbbf24', '#f59e0b'],
+            });
+          },
+          onMissionCompleted: (title, reward) => {
+            setVictoryMission({ title, reward });
+            triggerConfetti({
+              particleCount: 140,
+              spread: 95,
+              origin: { y: 0.55 },
+              colors: ['#38bdf8', '#fbbf24', '#22c55e', '#ef4444', '#a855f7'],
+            });
+          },
+          onItemPurchased: (_item) => {
+            triggerConfetti({
+              particleCount: 35,
+              spread: 60,
+              origin: { y: 0.75 },
+              colors: ['#a855f7', '#38bdf8', '#f59e0b'],
+            });
+          },
+          onCityExpanded: (_name, _desc) => {
+            triggerConfetti({
+              particleCount: 180,
+              spread: 110,
+              origin: { y: 0.45 },
+              colors: ['#22c55e', '#38bdf8', '#fbbf24', '#f59e0b', '#ec4899'],
+            });
+          },
         });
-      },
-      onJobCompleted: (_jobName, reward) => {
-        confetti({
-          particleCount: 75,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#22c55e', '#38bdf8', '#fbbf24', '#f59e0b'],
-        });
-      },
-      onMissionCompleted: (title, reward) => {
-        setVictoryMission({ title, reward });
-        confetti({
-          particleCount: 140,
-          spread: 95,
-          origin: { y: 0.55 },
-          colors: ['#38bdf8', '#fbbf24', '#22c55e', '#ef4444', '#a855f7'],
-        });
-      },
-      onItemPurchased: (_item) => {
-        confetti({
-          particleCount: 35,
-          spread: 60,
-          origin: { y: 0.75 },
-          colors: ['#a855f7', '#38bdf8', '#f59e0b'],
-        });
-      },
-      onCityExpanded: (_name, _desc) => {
-        confetti({
-          particleCount: 180,
-          spread: 110,
-          origin: { y: 0.45 },
-          colors: ['#22c55e', '#38bdf8', '#fbbf24', '#f59e0b', '#ec4899'],
-        });
-      },
+        if (disposed) {
+          engine.destroy();
+          engine = null;
+          return;
+        }
+        gameEngineRef.current = engine;
+        engine.updateCharacterCustomization(latestCustomizationRef.current);
+        if (showLoginScreenRef.current) {
+          engine.pause();
+        }
+        setWebglError(null);
+      } catch (err) {
+        console.error('Erro ao iniciar motor 3D WebGL:', err);
+        setWebglError(err instanceof Error ? err.message : 'WebGL indisponível neste navegador.');
+      }
     });
 
-    gameEngineRef.current = engine;
-
     return () => {
-      engine.destroy();
+      disposed = true;
+      cancelAnimationFrame(rafId);
+      engine?.destroy();
       gameEngineRef.current = null;
       soundManager.stopAll();
     };
   }, []);
 
-  // Para o som e a simulação imediatamente ao mudar de aba, alternar para o código Unity ou minimizar a tela
+  // Controla áudio e simulação: silencia áudio na tela de login e mantém renderização 3D pronta
   useEffect(() => {
-    if (activeTab !== 'simulator') {
+    if (showLoginScreen) {
       soundManager.pauseAll();
-      gameEngineRef.current?.pause();
-    } else {
+    } else if (activeTab === 'simulator') {
       soundManager.resumeAll();
       gameEngineRef.current?.resume();
     }
-  }, [activeTab]);
+  }, [showLoginScreen, activeTab]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         soundManager.pauseAll();
         gameEngineRef.current?.pause();
-      } else if (activeTab === 'simulator') {
+      } else if (!showLoginScreen && activeTab === 'simulator') {
         soundManager.resumeAll();
         gameEngineRef.current?.resume();
       }
     };
 
-    const handleWindowBlur = () => {
+    const handleResumeInteraction = () => {
+      if (!showLoginScreen && activeTab === 'simulator' && !document.hidden) {
+        soundManager.resumeAll();
+        gameEngineRef.current?.resume();
+      }
+    };
+
+    const handlePageHide = () => {
       soundManager.pauseAll();
       gameEngineRef.current?.pause();
     };
 
-    const handleWindowFocus = () => {
-      if (activeTab === 'simulator' && !document.hidden) {
-        soundManager.resumeAll();
-        gameEngineRef.current?.resume();
-      }
-    };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('focus', handleWindowFocus);
-    window.addEventListener('pagehide', handleWindowBlur);
+    window.addEventListener('focus', handleResumeInteraction);
+    window.addEventListener('pointerdown', handleResumeInteraction);
+    window.addEventListener('pagehide', handlePageHide);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener('pagehide', handleWindowBlur);
+      window.removeEventListener('focus', handleResumeInteraction);
+      window.removeEventListener('pointerdown', handleResumeInteraction);
+      window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [activeTab]);
+  }, [activeTab, showLoginScreen]);
 
   // Handlers dos Controles
   const handleJoystickMove = (x: number, y: number) => {
@@ -251,7 +302,7 @@ export default function App() {
 
   const handleUseBackpackItem = (item: BackpackItem) => {
     gameEngineRef.current?.useBackpackItem(item);
-    confetti({
+    triggerConfetti({
       particleCount: 30,
       spread: 55,
       origin: { y: 0.6 },
@@ -265,6 +316,18 @@ export default function App() {
 
   const handleTogglePerformanceMode = () => {
     gameEngineRef.current?.togglePerformanceMode();
+  };
+
+  const handleSetPerformanceMode = (mode: 'baixo' | 'medio' | 'alto') => {
+    gameEngineRef.current?.setGraphicQuality(mode);
+  };
+
+  const handleCameraZoomIn = () => {
+    gameEngineRef.current?.zoomIn();
+  };
+
+  const handleCameraZoomOut = () => {
+    gameEngineRef.current?.zoomOut();
   };
 
   const handleStartBuildingPlacement = (item: InventoryItem) => {
@@ -282,7 +345,7 @@ export default function App() {
       ...prev,
       characterCustomization: updated,
     }));
-    confetti({
+    triggerConfetti({
       particleCount: 50,
       spread: 60,
       origin: { y: 0.6 },
@@ -297,7 +360,7 @@ export default function App() {
   const handleConfirmBuildPlacement = () => {
     const res = gameEngineRef.current?.confirmBuildingPlacement();
     if (res?.success) {
-      confetti({
+      triggerConfetti({
         particleCount: 65,
         spread: 70,
         origin: { y: 0.6 },
@@ -315,18 +378,37 @@ export default function App() {
   };
 
   return (
-    <div className="relative w-screen h-screen bg-slate-950 overflow-hidden select-none flex flex-col font-sans">
+    <div className="fixed inset-0 w-full h-full bg-slate-950 overflow-hidden select-none flex flex-col font-sans">
       
       {/* ÁREA DE JOGO 100% FULL SCREEN ESTILO GTA INFANTIL (SEM TARJAS EXTERNAS) */}
-      <div className="relative flex-1 w-full h-full">
+      <div className="relative flex-1 w-full h-full min-h-0">
         
         {/* CANVAS 3D DO THREE.JS */}
         <div 
           ref={canvasMountRef}
-          className={`absolute inset-0 ${
+          className={`absolute inset-0 w-full h-full ${
             activeTab === 'simulator' ? 'block' : 'hidden'
           }`}
         />
+
+        {webglError && !showLoginScreen && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-slate-950/90 text-center">
+            <div className="max-w-sm bg-slate-900 border-2 border-amber-400 rounded-2xl p-5 space-y-3 shadow-2xl">
+              <div className="text-lg font-black text-amber-400 font-['Rajdhani'] uppercase">
+                Modo 3D WebGL Indisponível
+              </div>
+              <p className="text-xs text-slate-300">
+                Seu navegador bloqueou ou não suportou aceleração 3D WebGL. Ative a aceleração de hardware ou recarregue a página.
+              </p>
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs uppercase"
+              >
+                Tentar Novamente
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* HUD MOBILE GTA / FREE FIRE OVERLAY */}
         {activeTab === 'simulator' && (
@@ -344,10 +426,13 @@ export default function App() {
             onCameraRotate={handleCameraRotate}
             onTurnLeft={handleTurnLeft}
             onTurnRight={handleTurnRight}
+            onCameraZoomIn={handleCameraZoomIn}
+            onCameraZoomOut={handleCameraZoomOut}
             onOpenUnityCode={() => setActiveTab('unityCode')}
             onOpenBackpack={() => setShowBackpackModal(true)}
             onOpenJobsModal={() => setShowJobsModal(true)}
             onTogglePerformanceMode={handleTogglePerformanceMode}
+            onSetPerformanceMode={handleSetPerformanceMode}
             onSwitchPhase={(phase) => gameEngineRef.current?.switchPhase(phase)}
             onActivateLightTube={() => gameEngineRef.current?.activateLightTube()}
             onSetGPSDestination={(x, z, name) => gameEngineRef.current?.setGPSDestination(x, z, name)}
@@ -359,6 +444,9 @@ export default function App() {
             onConfirmBuildPlacement={handleConfirmBuildPlacement}
             onCancelBuildPlacement={handleCancelBuildPlacement}
             onDismantleNearestBuilding={handleDismantleNearest}
+            onOpenLoginScreen={() => setShowLoginScreen(true)}
+            onToggleDayNight={() => gameEngineRef.current?.cycleDayNightPeriod()}
+            onToggleWeather={() => gameEngineRef.current?.toggleWeather()}
           />
         )}
 
@@ -404,7 +492,7 @@ export default function App() {
         onClose={() => setShowCustomizerModal(false)}
         onSave={(newCustom) => {
           gameEngineRef.current?.updateCharacterCustomization(newCustom);
-          confetti({
+          triggerConfetti({
             particleCount: 85,
             spread: 75,
             origin: { y: 0.6 },
@@ -492,7 +580,7 @@ export default function App() {
         onEquipCustomization={handleEquipCustomization}
         onClose={() => setShowEsmeraldaStoreModal(false)}
         onItemPurchased={(_product: StoreProduct) => {
-          confetti({
+          triggerConfetti({
             particleCount: 65,
             spread: 70,
             origin: { y: 0.7 },
@@ -520,6 +608,39 @@ export default function App() {
             wallet: newW,
             money: newW.gold,
           }));
+        }}
+      />
+
+      {/* ÁREA DE LOGIN (THEO LUCCA: FREE CITY - MUNDO ABERTO) */}
+      <LoginScreen
+        isOpen={showLoginScreen}
+        onStartGame={(profile: SavedPlayerProfile) => {
+          setShowLoginScreen(false);
+          const updatedCustom = {
+            ...hudState.characterCustomization,
+            name: profile.name,
+            capColor: profile.capColor,
+            hasCap: true,
+          };
+          gameEngineRef.current?.updateCharacterCustomization(updatedCustom);
+          gameEngineRef.current?.resume();
+          setHudState((prev) => ({
+            ...prev,
+            characterName: profile.name,
+            characterCustomization: updatedCustom,
+          }));
+          soundManager.resumeAll();
+          triggerConfetti({
+            particleCount: 110,
+            spread: 85,
+            origin: { y: 0.6 },
+            colors: ['#10b981', '#38bdf8', '#fbbf24', '#f59e0b'],
+          });
+        }}
+        onClose={() => {
+          setShowLoginScreen(false);
+          gameEngineRef.current?.resume();
+          soundManager.resumeAll();
         }}
       />
 

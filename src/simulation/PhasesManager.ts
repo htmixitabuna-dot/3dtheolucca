@@ -489,11 +489,6 @@ export function createDiamond3DMesh(): THREE.Group {
   ring.position.y = 0.45;
   group.add(ring);
 
-  // Luz Pontual Ciano
-  const light = new THREE.PointLight(0x38bdf8, 2.5, 6);
-  light.position.y = 0.45;
-  group.add(light);
-
   return group;
 }
 
@@ -534,11 +529,6 @@ export function createAvaritia3DMesh(): THREE.Group {
   ring2.rotation.x = Math.PI / 3;
   ring2.name = 'ring2';
   group.add(ring2);
-
-  // Luz Dourada
-  const light = new THREE.PointLight(0xf59e0b, 3.2, 8);
-  light.position.y = 0.65;
-  group.add(light);
 
   return group;
 }

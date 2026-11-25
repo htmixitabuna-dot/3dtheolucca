@@ -292,6 +292,68 @@ func wave() -> void:
 	wave_timer = 2.5
 `;
 
+const SCRIPT_CAMERA_CONTROLLER = `extends Node3D
+class_name ThirdPersonCameraController
+
+@export var mouse_sensitivity: float = 0.003
+@export var touch_sensitivity: float = 0.005
+@export var min_pitch: float = -45.0
+@export var max_pitch: float = 60.0
+
+@onready var spring_arm: SpringArm3D = $SpringArm3D
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		rotate_camera(event.relative.x * mouse_sensitivity, event.relative.y * mouse_sensitivity)
+	elif event is InputEventScreenDrag:
+		rotate_camera(event.relative.x * touch_sensitivity, event.relative.y * touch_sensitivity)
+
+func rotate_camera(yaw_delta: float, pitch_delta: float) -> void:
+	rotation.y -= yaw_delta
+	if spring_arm:
+		spring_arm.rotation.x = clamp(
+			spring_arm.rotation.x - pitch_delta,
+			deg_to_rad(min_pitch),
+			deg_to_rad(max_pitch)
+		)
+`;
+
+const SCRIPT_STORE_MODAL = `extends Control
+class_name EsmeraldaStoreUI
+
+signal item_bought(product: Dictionary)
+signal closed()
+
+@export var player_node: TheoLuccaPlayer
+
+@onready var gold_label: Label = $TopHeader/WalletContainer/GoldContainer/Label
+@onready var diamonds_label: Label = $TopHeader/WalletContainer/DiamondsContainer/Label
+@onready var emeralds_label: Label = $TopHeader/WalletContainer/EmeraldsContainer/Label
+
+@onready var product_title: Label = $RightCard/VBox/TitleLabel
+@onready var rarity_badge: Label = $RightCard/VBox/RarityBadge
+@onready var description_label: Label = $RightCard/VBox/DescLabel
+@onready var buy_button: Button = $RightCard/VBox/BuyButton
+
+var current_category: String = "destaques"
+var selected_product: Dictionary = {}
+var chosen_currency: String = "gold"
+
+func _ready() -> void:
+	update_wallet_display()
+
+func update_wallet_display() -> void:
+	var economy = get_node_or_null("/root/EconomyManager")
+	if economy:
+		gold_label.text = str(int(economy.gold))
+		diamonds_label.text = str(economy.diamonds)
+		emeralds_label.text = str(economy.emeralds)
+
+func close_store() -> void:
+	visible = false
+	closed.emit()
+`;
+
 const README_MD = `# 🎮 Theo Lucca - Cidade Real 3D (Godot Engine 4.x)
 
 Projeto convertido e exportado para o **Godot Engine 4.2+ / 4.3+**!
@@ -300,6 +362,103 @@ Projeto convertido e exportado para o **Godot Engine 4.2+ / 4.3+**!
 1. Abra o **Godot 4**.
 2. Clique em **Import** e selecione o arquivo \`project.godot\`.
 3. Pressione **F5** para rodar o jogo imediatamente!
+
+## 📄 Prompt Mestre de Continuação:
+Consulte o arquivo \`PROMPT_MESTRE_GODOT4.md\` para instruções completas de continuidade com Inteligência Artificial ou equipe de desenvolvimento.
+`;
+
+const PROMPT_MESTRE_MD = `# 🚀 PROMPT MESTRE DE CONTINUAÇÃO DO JOGO NO GODOT ENGINE 4
+
+> **INSTRUÇÃO PARA O DESENVOLVEDOR OU AGENTE DE IA**:
+> Você está assumindo o desenvolvimento contínuo do jogo **"Theo Lucca - Cidade Real 3D"**, originalmente concebido e prototipado em ambiente 3D web e agora migrado oficialmente para o **Godot Engine 4.2+ / 4.3+**.
+> Leia atentamente toda a especificação abaixo antes de escrever qualquer código, criar cenas ou modificar scripts.
+
+---
+
+## 1. VISÃO GERAL E IDENTIDADE DO JOGO
+
+- **Nome Oficial**: Theo Lucca - Cidade Real 3D
+- **Motor / Engine**: Godot Engine 4 (versão 4.2 ou superior, idealmente 4.3+)
+- **Renderizador Alvo**: \`Forward+\` para PC e \`Mobile\` (Vulkan Mobile / OpenGL Compatibility) para Android de entrada.
+- **Taxa de Quadros Alvo**: 60 FPS estáveis em computadores médios e celulares Android populares.
+- **Protagonista**: **Theo Lucca**, um garotinho brasileiro alegre e aventureiro de 4 anos (escala de altura proporcional de 1.05m), com pele morena clara (#c68652), olhos castanhos vivos estilo animação Pixar, cabelos cacheados castanhos escuros, boné aba curva, regata/camiseta azul, bermuda streetwear, tênis esportivos bicolores e mochila de couro para guardar itens encontrados pela cidade.
+- **Ambientação**: Cidade brasileira acolhedora, solar e vibrante chamada **Cidade Real**, contendo:
+  - Praça Central com chafariz, bancos de madeira/mármore, árvores floridas (Ipês amarelos e cerejeiras) e um pedestal de LED neon ciano futurista no centro.
+  - Oficina Mecânica do Theo Lucca com elevadores hidráulicos e ferramentas.
+  - Padaria do Seu Manuel, Pizzaria do Luigi e Mini-Mercado de bairro com toldos coloridos.
+  - Avenidas com asfalto sinalizado, postes vintage iluminados, trânsito de carros, caminhonetes e motos esportivas.
+  - Bairro residencial com casas modernas e terrenos demarcados para construção do próprio jogador.
+
+---
+
+## 2. REGRAS OBRIGATÓRIAS E INVIOLÁVEIS
+
+1. **Preservar a Estrutura Existente**: Nunca apague, renomeie ou quebre scripts e cenas já implementados (\`scenes/player/player.tscn\`, \`scenes/main.tscn\`, \`scripts/economy_manager.gd\`, etc.).
+2. **Identidade do Personagem**: Mantenha a proporção infantil de 1.05m e os traços carismáticos do Theo Lucca. A animação deve ser procedural ou esquelética mantendo o peso, respiração e passos saltitantes de uma criança de 4 anos.
+3. **Economia Tripla Sem Pagamentos Reais Forçados**:
+   - 🪙 **Ouro**: recurso gratuito ganho através de missões, exploração, coleta na rua e trabalhos na oficina/padaria.
+   - 💎 **Diamantes**: moeda especial encontrada em locais secretos (telhados, becos ocultos, marcos urbanos).
+   - ❇️ **Esmeraldas**: moeda premium obtida em missões lendárias raras ou configurada via painel administrativo.
+   - Nunca torne compras reais obrigatórias para progredir no jogo.
+4. **Convenções de Código no Godot 4**:
+   - Use **GDScript 2.0** com tipagem estática explícita (\`var speed: float = 4.2\`, \`func get_wallet() -> Dictionary:\`).
+   - Use \`@export\`, \`@onready\`, e \`@rpc\` conforme a sintaxe moderna do Godot 4.
+   - Conecte nós e eventos através de sinais (\`signals\`) desacoplados.
+   - Salve os dados de progresso e economia sempre em \`user://economy_data.json\`.
+
+---
+
+## 3. ARQUITETURA DE ARQUIVOS DO PROJETO GODOT 4
+
+\`\`\`
+res://
+├── project.godot                     # Configuração global do projeto (inputs, display, rendering)
+├── icon.svg                          # Ícone oficial com a Esmeralda e Coroa Dourada
+├── README_GODOT4.md                  # Guia de inicialização rápida
+├── PROMPT_MESTRE_GODOT4.md           # Prompt mestre de continuidade
+├── scenes/
+│   ├── main.tscn                     # Cena principal 3D com WorldEnvironment, iluminação e cidade
+│   └── player/
+│       └── player.tscn               # Cena do Theo Lucca (CharacterBody3D, colisores, câmera)
+└── scripts/
+    ├── player.gd                     # Controlador 3D, física, pulo, sprint e animações do jogador
+    ├── camera_controller.gd          # Câmera orbital terceira pessoa com SpringArm3D (PC e toque mobile)
+    ├── economy_manager.gd            # Autoload Singleton para saldo, transações e inventário
+    ├── store_modal.gd                # Lógica da loja com 7 categorias e troca em tempo real de roupas
+    ├── city_traffic.gd               # Sistema de tráfego autônomo (Path3D / NavigationAgent3D)
+    └── building_placer.gd            # Sistema de posicionamento de construções em grade no terreno
+\`\`\`
+
+---
+
+## 4. TAREFAS DE CONTINUAÇÃO PRIORITÁRIAS (ROADMAP)
+
+### TAREFA 1: Sistema de Tráfego Autônomo e Veículos Dirigíveis
+- **Objetivo**: Dar vida às avenidas da Cidade Real com carros (Táxi Amarelo, Carro Azul Esportivo, Van Vermelha, Picape e Fusquinha) e motos esportivas.
+- **Implementação**:
+  - Criar nós \`Path3D\` com \`PathFollow3D\` ao longo das faixas de rodagem.
+  - Adicionar detecção de obstáculos com \`RayCast3D\` para parar em pedestres ou semáforos.
+  - Ao aproximar de um veículo, pressionar **E** (ou botão mobile **PILOTAR**) para entrar e dirigir com física \`VehicleBody3D\` ou \`CharacterBody3D\`.
+
+### TAREFA 2: Sistema de Missões e NPCs com Diálogos
+- **Carlos Mecânico**: Missão de apertar parafusos em carros na oficina com chave inglesa.
+- **Seu Manuel (Padaria)**: Missão de entrega rápida de pães com cronômetro.
+- **Luigi Pizzaria**: Entrega de pizza com farol luminoso (\`CylinderMesh\` emissivo no destino).
+
+### TAREFA 3: Modo Construção no Terreno
+- Grid snapping, pré-visualização holográfica verde/vermelha, rotação de estruturas com tecla **R**.
+- Construções removidas retornam ao inventário no \`economy_manager.gd\` sem custo extra.
+
+### TAREFA 4: Áudio 3D Imersivo
+- Nós \`AudioStreamPlayer3D\` para passos, buzina, motor e moedas colhidas.
+
+### TAREFA 5: HUD Mobile e Controles Táteis
+- Joystick analógico virtual (\`Control\`) e botões circulares (\`PULAR\`, \`CORRER\`, \`PILOTAR\`, \`LOJA\`).
+
+---
+
+> **COMANDO DE INÍCIO**:
+> "Você tem em mãos o projeto oficial Godot 4 de **Theo Lucca - Cidade Real 3D**. Proceda com as tarefas acima priorizando código robusto, performático, documentado em português e com foco em diversão, estabilidade a 60 FPS e estética vibrante de alta qualidade!"
 `;
 
 /**
@@ -312,12 +471,53 @@ export async function downloadGodot4Project(): Promise<void> {
   zip.file('project.godot', GODOT_PROJECT_FILE);
   zip.file('icon.svg', ICON_SVG);
   zip.file('README_GODOT4.md', README_MD);
+  zip.file('PROMPT_MESTRE_GODOT4.md', PROMPT_MESTRE_MD);
 
   // Scripts GDScript
   const scriptsFolder = zip.folder('scripts');
   if (scriptsFolder) {
     scriptsFolder.file('economy_manager.gd', SCRIPT_ECONOMY_MANAGER);
     scriptsFolder.file('player.gd', SCRIPT_PLAYER);
+    scriptsFolder.file('camera_controller.gd', SCRIPT_CAMERA_CONTROLLER);
+    scriptsFolder.file('store_modal.gd', SCRIPT_STORE_MODAL);
+    scriptsFolder.file('weather_manager.gd', `extends Node
+class_name WeatherManagerGD
+
+signal weather_changed(new_weather: String)
+
+enum WeatherType { SUNNY, CLOUDY, RAINY }
+
+@export var current_weather: WeatherType = WeatherType.SUNNY
+@export var auto_cycle: bool = true
+@export var cycle_duration: float = 180.0
+
+@export var sun_light: DirectionalLight3D
+@export var world_environment: WorldEnvironment
+@export var rain_particles: GPUParticles3D
+@export var rain_audio: AudioStreamPlayer
+@export var thunder_audio: AudioStreamPlayer3D
+
+var cycle_timer: float = 180.0
+var lightning_timer: float = 16.0
+var is_flashing: bool = false
+var flash_duration: float = 0.0
+
+func _ready() -> void:
+	cycle_timer = cycle_duration
+
+func _process(delta: float) -> void:
+	if auto_cycle:
+		cycle_timer -= delta
+		if cycle_timer <= 0:
+			toggle_weather()
+
+func toggle_weather() -> void:
+	match current_weather:
+		WeatherType.SUNNY: current_weather = WeatherType.CLOUDY
+		WeatherType.CLOUDY: current_weather = WeatherType.RAINY
+		WeatherType.RAINY: current_weather = WeatherType.SUNNY
+	weather_changed.emit(str(current_weather))
+`);
   }
 
   // Gera o arquivo ZIP binário e inicia o download no navegador

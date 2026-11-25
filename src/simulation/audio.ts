@@ -10,18 +10,32 @@ class SoundSynthesizer {
   private fountainSource: AudioBufferSourceNode | null = null;
   private fountainGain: GainNode | null = null;
   private isFountainRunning: boolean = false;
+  private rainSource: AudioBufferSourceNode | null = null;
+  private rainGain: GainNode | null = null;
+  private isRainRunning: boolean = false;
   private isScreenPaused: boolean = false;
 
   private initCtx(): AudioNode | null {
+    if (typeof window === 'undefined') return null;
+
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtx();
+      try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioCtx) return null;
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
     }
 
     if (!this.masterGain && this.ctx) {
-      this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(this.isMuted || this.isScreenPaused ? 0 : 1.0, this.ctx.currentTime);
-      this.masterGain.connect(this.ctx.destination);
+      try {
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.setValueAtTime(this.isMuted || this.isScreenPaused ? 0 : 1.0, this.ctx.currentTime);
+        this.masterGain.connect(this.ctx.destination);
+      } catch {
+        return null;
+      }
     }
 
     if (this.ctx && this.ctx.state === 'suspended' && !this.isScreenPaused) {
@@ -43,6 +57,9 @@ class SoundSynthesizer {
     if (this.fountainGain) {
       this.fountainGain.gain.value = muted || this.isScreenPaused ? 0 : 0.12;
     }
+    if (this.rainGain) {
+      this.rainGain.gain.value = muted || this.isScreenPaused ? 0 : 0.18;
+    }
   }
 
   public getMuted(): boolean {
@@ -55,6 +72,7 @@ class SoundSynthesizer {
   public pauseAll() {
     this.isScreenPaused = true;
     this.stopFountainAmbient();
+    this.stopRainAmbient();
     if (this.masterGain && this.ctx) {
       try {
         this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
@@ -637,6 +655,219 @@ class SoundSynthesizer {
       this.fountainGain = null;
     }
     this.isFountainRunning = false;
+  }
+
+  /**
+   * Som de chuva procedural suave (ruído rosa / marrom filtrado contínuo)
+   */
+  public startRainAmbient() {
+    if (this.rainSource || this.isMuted || this.isScreenPaused) return;
+    try {
+      const outNode = this.initCtx();
+      if (!this.ctx || !outNode) return;
+
+      const bufferSize = this.ctx.sampleRate * 3;
+      const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+
+      // Algoritmo de ruído rosa suave para textura de chuva realista
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.05;
+        b6 = white * 0.115926;
+      }
+
+      this.rainSource = this.ctx.createBufferSource();
+      this.rainSource.buffer = noiseBuffer;
+      this.rainSource.loop = true;
+
+      // Filtro passa-baixa com ressonância suave simulando gotas d'água no solo
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1400, this.ctx.currentTime);
+      filter.Q.setValueAtTime(0.8, this.ctx.currentTime);
+
+      this.rainGain = this.ctx.createGain();
+      this.rainGain.gain.setValueAtTime(this.isMuted || this.isScreenPaused ? 0 : 0.22, this.ctx.currentTime);
+
+      this.rainSource.connect(filter);
+      filter.connect(this.rainGain);
+      this.rainGain.connect(outNode);
+
+      this.rainSource.start();
+      this.isRainRunning = true;
+    } catch {
+      // Ignora restrições de autoplay antes de gesto do usuário
+    }
+  }
+
+  /**
+   * Para imediatamente o som ambiente de chuva
+   */
+  public stopRainAmbient() {
+    if (this.rainSource) {
+      try {
+        this.rainSource.stop();
+        this.rainSource.disconnect();
+      } catch {
+        // ignore
+      }
+      this.rainSource = null;
+    }
+    if (this.rainGain) {
+      try {
+        this.rainGain.disconnect();
+      } catch {
+        // ignore
+      }
+      this.rainGain = null;
+    }
+    this.isRainRunning = false;
+  }
+
+  /**
+   * Trovão procedural distante com reverberação grave suave
+   */
+  public playThunder() {
+    if (this.isMuted || this.isScreenPaused) return;
+    const outNode = this.initCtx();
+    if (!this.ctx || !outNode || this.ctx.state !== 'running') return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(160, now);
+      filter.frequency.exponentialRampToValueAtTime(55, now + 1.8);
+
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(65, now);
+      osc1.frequency.exponentialRampToValueAtTime(25, now + 1.8);
+
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(45, now);
+      osc2.frequency.exponentialRampToValueAtTime(20, now + 2.0);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.24, now + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 2.2);
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(outNode);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 2.3);
+      osc2.stop(now + 2.3);
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Som realista de colisão / batida de carro estilo GTA (impacto metálico, estalo de chassi e raspagem)
+   */
+  public playCarCrash(intensity: number = 1.0) {
+    if (this.isMuted || this.isScreenPaused) return;
+    const outNode = this.initCtx();
+    if (!this.ctx || !outNode || this.ctx.state !== 'running') return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const clampedInt = Math.max(0.2, Math.min(1.2, intensity));
+
+      // 1. Ruído de impacto metálico e quebra de lataria
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.3);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.07));
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const noiseFilter = this.ctx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.setValueAtTime(750, now);
+      noiseFilter.Q.setValueAtTime(2.2, now);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.4 * clampedInt, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(outNode);
+      noise.start(now);
+
+      // 2. Pancada grave do chassi (sub-bass thump)
+      const thud = this.ctx.createOscillator();
+      const thudGain = this.ctx.createGain();
+      thud.type = 'triangle';
+      thud.frequency.setValueAtTime(160, now);
+      thud.frequency.exponentialRampToValueAtTime(36, now + 0.2);
+      thudGain.gain.setValueAtTime(0.45 * clampedInt, now);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      thud.connect(thudGain);
+      thudGain.connect(outNode);
+      thud.start(now);
+      thud.stop(now + 0.21);
+
+      // 3. Raspagem metálica de lataria (metallic screech ring)
+      const metal = this.ctx.createOscillator();
+      const metalGain = this.ctx.createGain();
+      metal.type = 'sawtooth';
+      metal.frequency.setValueAtTime(460, now);
+      metal.frequency.linearRampToValueAtTime(190, now + 0.16);
+      metalGain.gain.setValueAtTime(0.22 * clampedInt, now);
+      metalGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      metal.connect(metalGain);
+      metalGain.connect(outNode);
+      metal.start(now);
+      metal.stop(now + 0.19);
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Som de conserto e polimento de carro na Oficina Theo Lucca
+   */
+  public playCarRepair() {
+    if (this.isMuted || this.isScreenPaused) return;
+    const outNode = this.initCtx();
+    if (!this.ctx || !outNode || this.ctx.state !== 'running') return;
+
+    try {
+      const now = this.ctx.currentTime;
+      [330, 440, 554.37, 659.25, 880].forEach((freq, idx) => {
+        const osc = this.ctx!.createOscillator();
+        const g = this.ctx!.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+        g.gain.setValueAtTime(0.22, now + idx * 0.07);
+        g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.22);
+        osc.connect(g);
+        g.connect(outNode!);
+        osc.start(now + idx * 0.07);
+        osc.stop(now + idx * 0.07 + 0.24);
+      });
+    } catch {
+      // ignore
+    }
   }
 }
 
